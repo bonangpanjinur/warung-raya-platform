@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { CartProvider } from "@/contexts/CartContext";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { WhitelabelProvider } from "@/contexts/WhitelabelContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { InstallBanner } from "@/components/pwa/InstallBanner";
 import { OfflineIndicator } from "@/components/pwa/OfflineIndicator";
@@ -58,6 +59,7 @@ import AdminFinancePage from "./pages/admin/AdminFinancePage";
 import AdminBannersPage from "./pages/admin/AdminBannersPage";
 import AdminBroadcastPage from "./pages/admin/AdminBroadcastPage";
 import AdminPWASettingsPage from "./pages/admin/AdminPWASettingsPage";
+import AdminWhitelabelPage from "./pages/admin/AdminWhitelabelPage";
 import CourierHistoryPage from "./pages/courier/CourierHistoryPage";
 // Verifikator Pages
 import VerifikatorDashboardPage from "./pages/verifikator/VerifikatorDashboardPage";
@@ -94,13 +96,14 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <AuthProvider>
-        <CartProvider>
-          <Toaster />
-          <Sonner />
-          <OfflineIndicator />
-          <BrowserRouter>
-            <InstallBanner />
-            <UpdatePrompt />
+        <WhitelabelProvider>
+          <CartProvider>
+            <Toaster />
+            <Sonner />
+            <OfflineIndicator />
+            <BrowserRouter>
+              <InstallBanner />
+              <UpdatePrompt />
             <Routes>
               {/* Public routes */}
               <Route path="/" element={<Index />} />
@@ -277,6 +280,11 @@ const App = () => (
                   <AdminPWASettingsPage />
                 </ProtectedRoute>
               } />
+              <Route path="/admin/whitelabel" element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <AdminWhitelabelPage />
+                </ProtectedRoute>
+              } />
 
               {/* Verifikator routes */}
               <Route path="/verifikator" element={
@@ -376,9 +384,10 @@ const App = () => (
             </Routes>
           </BrowserRouter>
         </CartProvider>
-      </AuthProvider>
-    </TooltipProvider>
-  </QueryClientProvider>
+      </WhitelabelProvider>
+    </AuthProvider>
+  </TooltipProvider>
+</QueryClientProvider>
 );
 
 export default App;
