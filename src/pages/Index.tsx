@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ChevronRight, Sparkles, Flame, TrendingUp } from 'lucide-react';
 import { Header } from '@/components/layout/Header';
 import { BottomNav } from '@/components/layout/BottomNav';
+import { FloatingCartButton } from '@/components/layout/FloatingCartButton';
 import { CategoryIcon } from '@/components/CategoryIcon';
 import { VillageCard } from '@/components/VillageCard';
 import { ProductCard } from '@/components/ProductCard';
@@ -191,6 +192,7 @@ const Index = () => {
         )}
       </div>
 
+      <FloatingCartButton />
       <BottomNav />
     </div>
   );

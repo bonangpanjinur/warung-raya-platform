@@ -1,14 +1,13 @@
 import { Link } from 'react-router-dom';
-import { ShoppingCart, Leaf } from 'lucide-react';
-import { useCart } from '@/contexts/CartContext';
+import { Bell, Leaf } from 'lucide-react';
 
 export function Header() {
-  const { getItemCount } = useCart();
-  const itemCount = getItemCount();
+  // TODO: Implement notification count from backend
+  const notificationCount = 0;
 
   return (
     <header className="bg-card sticky top-0 z-40 shadow-md px-5 py-3">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2">
           <div className="w-8 h-8 bg-primary rounded-xl flex items-center justify-center text-primary-foreground text-sm shadow-brand">
             <Leaf className="h-4 w-4" />
@@ -23,19 +22,19 @@ export function Header() {
           </div>
         </Link>
         
-        <Link 
-          to="/cart" 
+        <button 
           className="relative cursor-pointer hover:scale-105 transition"
+          aria-label="Notifications"
         >
           <div className="w-8 h-8 bg-secondary rounded-full flex items-center justify-center text-secondary-foreground border border-border">
-            <ShoppingCart className="h-4 w-4" />
+            <Bell className="h-4 w-4" />
           </div>
-          {itemCount > 0 && (
+          {notificationCount > 0 && (
             <span className="absolute -top-1 -right-1 w-4 h-4 bg-destructive rounded-full border-2 border-card text-[8px] flex items-center justify-center text-destructive-foreground font-bold">
-              {itemCount > 9 ? '9+' : itemCount}
+              {notificationCount > 9 ? '9+' : notificationCount}
             </span>
           )}
-        </Link>
+        </button>
       </div>
     </header>
   );
