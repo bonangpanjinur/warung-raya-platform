@@ -3,7 +3,8 @@ import {
   LayoutDashboard, 
   Wallet, 
   ChevronLeft,
-  Bike
+  Bike,
+  History
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -18,6 +19,7 @@ export function CourierSidebar() {
 
   const menuItems: SidebarItem[] = [
     { label: 'Dashboard', href: '/courier', icon: <LayoutDashboard className="h-4 w-4" /> },
+    { label: 'Riwayat Pengiriman', href: '/courier/history', icon: <History className="h-4 w-4" /> },
     { label: 'Pendapatan', href: '/courier/earnings', icon: <Wallet className="h-4 w-4" /> },
   ];
 

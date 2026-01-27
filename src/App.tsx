@@ -49,7 +49,10 @@ import AdminLogsPage from "./pages/admin/AdminLogsPage";
 import AdminWithdrawalsPage from "./pages/admin/AdminWithdrawalsPage";
 import AdminPackagesPage from "./pages/admin/AdminPackagesPage";
 import AdminVerifikatorCommissionsPage from "./pages/admin/AdminVerifikatorCommissionsPage";
-
+import AdminFinancePage from "./pages/admin/AdminFinancePage";
+import AdminBannersPage from "./pages/admin/AdminBannersPage";
+import AdminBroadcastPage from "./pages/admin/AdminBroadcastPage";
+import CourierHistoryPage from "./pages/courier/CourierHistoryPage";
 // Verifikator Pages
 import VerifikatorDashboardPage from "./pages/verifikator/VerifikatorDashboardPage";
 import VerifikatorMerchantsPage from "./pages/verifikator/VerifikatorMerchantsPage";
@@ -150,8 +153,11 @@ const App = () => (
                   <CourierEarningsPage />
                 </ProtectedRoute>
               } />
-
-              {/* Buyer additional routes */}
+              <Route path="/courier/history" element={
+                <ProtectedRoute allowedRoles={['courier', 'admin']}>
+                  <CourierHistoryPage />
+                </ProtectedRoute>
+              } />
               <Route path="/orders/:orderId/review" element={
                 <ProtectedRoute>
                   <ReviewsPage />
@@ -237,6 +243,21 @@ const App = () => (
               <Route path="/admin/verifikator-commissions" element={
                 <ProtectedRoute allowedRoles={['admin']}>
                   <AdminVerifikatorCommissionsPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/admin/finance" element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <AdminFinancePage />
+                </ProtectedRoute>
+              } />
+              <Route path="/admin/banners" element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <AdminBannersPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/admin/broadcast" element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <AdminBroadcastPage />
                 </ProtectedRoute>
               } />
 
