@@ -13,7 +13,9 @@ import {
   User,
   LogOut,
   AlertCircle,
-  Wallet
+  Wallet,
+  Camera,
+  History
 } from 'lucide-react';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/button';
@@ -21,6 +23,8 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { CourierLocationUpdater } from '@/components/CourierLocationUpdater';
+import { NavigationButton } from '@/components/courier/NavigationButton';
+import { ProofOfDelivery } from '@/components/courier/ProofOfDelivery';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
@@ -56,6 +60,7 @@ export default function CourierDashboardPage() {
   const [orders, setOrders] = useState<AssignedOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [podOrderId, setPodOrderId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authLoading && user) {
@@ -188,14 +193,14 @@ export default function CourierDashboardPage() {
     }
   };
 
-  const getNextAction = (status: string) => {
-    switch (status) {
+  const getNextAction = (order: AssignedOrder) => {
+    switch (order.status) {
       case 'ASSIGNED':
-        return { label: 'Ambil Pesanan', nextStatus: 'PICKED_UP' };
+        return { label: 'Ambil Pesanan', nextStatus: 'PICKED_UP', needsPOD: false };
       case 'PICKED_UP':
-        return { label: 'Mulai Antar', nextStatus: 'ON_DELIVERY' };
+        return { label: 'Mulai Antar', nextStatus: 'ON_DELIVERY', needsPOD: false };
       case 'ON_DELIVERY':
-        return { label: 'Selesai Antar', nextStatus: 'DELIVERED' };
+        return { label: 'Selesai + Foto', nextStatus: 'DELIVERED', needsPOD: true };
       default:
         return null;
     }
@@ -295,6 +300,29 @@ export default function CourierDashboardPage() {
           </motion.div>
         )}
 
+        {/* History Link */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.12 }}
+        >
+          <Link
+            to="/courier/history"
+            className="flex items-center justify-between p-4 bg-card rounded-xl border border-border hover:bg-secondary transition"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-secondary rounded-full flex items-center justify-center">
+                <History className="h-5 w-5 text-muted-foreground" />
+              </div>
+              <div>
+                <p className="font-medium">Riwayat Pengiriman</p>
+                <p className="text-sm text-muted-foreground">Lihat detail & bukti pengiriman</p>
+              </div>
+            </div>
+            <Navigation className="h-4 w-4 text-muted-foreground" />
+          </Link>
+        </motion.div>
+
         {/* Earnings Link */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -344,13 +372,21 @@ export default function CourierDashboardPage() {
           ) : (
             <div className="space-y-3">
               {orders.map((order) => {
-                const action = getNextAction(order.status);
+                const action = getNextAction(order);
                 const distance = courier.current_lat && courier.current_lng && order.delivery_lat && order.delivery_lng
                   ? calculateDistance(
                       { lat: courier.current_lat, lng: courier.current_lng },
                       { lat: order.delivery_lat, lng: order.delivery_lng }
                     )
                   : null;
+
+                const handleAction = () => {
+                  if (action?.needsPOD) {
+                    setPodOrderId(order.id);
+                  } else if (action) {
+                    updateOrderStatus(order.id, action.nextStatus);
+                  }
+                };
 
                 return (
                   <div
@@ -407,6 +443,20 @@ export default function CourierDashboardPage() {
                       )}
                     </div>
 
+                    {/* Navigation button */}
+                    {order.delivery_lat && order.delivery_lng && (
+                      <div className="mb-3">
+                        <NavigationButton
+                          lat={order.delivery_lat}
+                          lng={order.delivery_lng}
+                          address={order.delivery_address || undefined}
+                          variant="outline"
+                          size="sm"
+                          className="w-full"
+                        />
+                      </div>
+                    )}
+
                     <div className="flex items-center justify-between pt-3 border-t border-border">
                       <p className="font-bold text-primary">
                         Rp {order.total.toLocaleString('id-ID')}
@@ -415,12 +465,14 @@ export default function CourierDashboardPage() {
                       {action && (
                         <Button
                           size="sm"
-                          onClick={() => updateOrderStatus(order.id, action.nextStatus)}
+                          onClick={handleAction}
                         >
-                          {action.nextStatus === 'DELIVERED' ? (
-                            <CheckCircle className="h-4 w-4 mr-1" />
-                          ) : (
+                          {action.needsPOD ? (
+                            <Camera className="h-4 w-4 mr-1" />
+                          ) : action.nextStatus === 'PICKED_UP' ? (
                             <Truck className="h-4 w-4 mr-1" />
+                          ) : (
+                            <CheckCircle className="h-4 w-4 mr-1" />
                           )}
                           {action.label}
                         </Button>
@@ -433,6 +485,17 @@ export default function CourierDashboardPage() {
           )}
         </motion.div>
       </div>
+
+      {/* POD Dialog */}
+      <ProofOfDelivery
+        orderId={podOrderId || ''}
+        open={!!podOrderId}
+        onOpenChange={(open) => !open && setPodOrderId(null)}
+        onSuccess={() => {
+          setPodOrderId(null);
+          fetchCourierData();
+        }}
+      />
     </div>
   );
 }

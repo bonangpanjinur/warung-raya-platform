@@ -15,7 +15,10 @@ import {
   RotateCcw,
   ScrollText,
   Package,
-  Percent
+  Percent,
+  DollarSign,
+  Image,
+  Bell
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -49,9 +52,12 @@ export function AdminSidebar({ pendingMerchants = 0, pendingVillages = 0, pendin
     { label: 'Paket Transaksi', href: '/admin/packages', icon: <Package className="h-4 w-4" /> },
     { label: 'Komisi Verifikator', href: '/admin/verifikator-commissions', icon: <Percent className="h-4 w-4" />, badge: pendingVerifikatorWithdrawals },
     { label: 'Penarikan Merchant', href: '/admin/withdrawals', icon: <RotateCcw className="h-4 w-4" />, badge: pendingWithdrawals },
+    { label: 'Laporan Keuangan', href: '/admin/finance', icon: <DollarSign className="h-4 w-4" /> },
     { label: 'Refund', href: '/admin/refunds', icon: <RotateCcw className="h-4 w-4" />, badge: pendingRefunds },
     { label: 'Laporan', href: '/admin/reports', icon: <FileText className="h-4 w-4" /> },
+    { label: 'Banner Homepage', href: '/admin/banners', icon: <Image className="h-4 w-4" /> },
     { label: 'Promosi', href: '/admin/promotions', icon: <Megaphone className="h-4 w-4" /> },
+    { label: 'Broadcast', href: '/admin/broadcast', icon: <Bell className="h-4 w-4" /> },
     { label: 'Kode Verifikator', href: '/admin/codes', icon: <TicketCheck className="h-4 w-4" /> },
     { label: 'System Logs', href: '/admin/logs', icon: <ScrollText className="h-4 w-4" /> },
     { label: 'Pengaturan', href: '/admin/settings', icon: <Settings className="h-4 w-4" /> },

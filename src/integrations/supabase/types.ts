@@ -86,6 +86,99 @@ export type Database = {
         }
         Relationships: []
       }
+      broadcast_notifications: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          message: string
+          scheduled_at: string | null
+          sent_at: string | null
+          sent_count: number | null
+          status: string
+          target_audience: string
+          target_roles: string[] | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          message: string
+          scheduled_at?: string | null
+          sent_at?: string | null
+          sent_count?: number | null
+          status?: string
+          target_audience?: string
+          target_roles?: string[] | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          message?: string
+          scheduled_at?: string | null
+          sent_at?: string | null
+          sent_count?: number | null
+          status?: string
+          target_audience?: string
+          target_roles?: string[] | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      courier_earnings: {
+        Row: {
+          amount: number
+          courier_id: string
+          created_at: string
+          id: string
+          order_id: string | null
+          paid_at: string | null
+          status: string
+          type: string
+        }
+        Insert: {
+          amount?: number
+          courier_id: string
+          created_at?: string
+          id?: string
+          order_id?: string | null
+          paid_at?: string | null
+          status?: string
+          type?: string
+        }
+        Update: {
+          amount?: number
+          courier_id?: string
+          created_at?: string
+          id?: string
+          order_id?: string | null
+          paid_at?: string | null
+          status?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "courier_earnings_courier_id_fkey"
+            columns: ["courier_id"]
+            isOneToOne: false
+            referencedRelation: "couriers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "courier_earnings_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       couriers: {
         Row: {
           address: string
@@ -671,6 +764,9 @@ export type Database = {
           payment_paid_at: string | null
           payment_status: string | null
           picked_up_at: string | null
+          pod_image_url: string | null
+          pod_notes: string | null
+          pod_uploaded_at: string | null
           rejection_reason: string | null
           shipping_cost: number
           status: string
@@ -707,6 +803,9 @@ export type Database = {
           payment_paid_at?: string | null
           payment_status?: string | null
           picked_up_at?: string | null
+          pod_image_url?: string | null
+          pod_notes?: string | null
+          pod_uploaded_at?: string | null
           rejection_reason?: string | null
           shipping_cost?: number
           status?: string
@@ -743,6 +842,9 @@ export type Database = {
           payment_paid_at?: string | null
           payment_status?: string | null
           picked_up_at?: string | null
+          pod_image_url?: string | null
+          pod_notes?: string | null
+          pod_uploaded_at?: string | null
           rejection_reason?: string | null
           shipping_cost?: number
           status?: string
@@ -763,6 +865,69 @@ export type Database = {
             columns: ["merchant_id"]
             isOneToOne: false
             referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_fees: {
+        Row: {
+          collected_at: string | null
+          courier_fee: number
+          created_at: string
+          fee_type: string
+          id: string
+          merchant_id: string | null
+          merchant_revenue: number
+          order_id: string | null
+          order_total: number
+          platform_fee: number
+          platform_fee_percent: number
+          shipping_cost: number
+          status: string
+        }
+        Insert: {
+          collected_at?: string | null
+          courier_fee?: number
+          created_at?: string
+          fee_type?: string
+          id?: string
+          merchant_id?: string | null
+          merchant_revenue?: number
+          order_id?: string | null
+          order_total?: number
+          platform_fee?: number
+          platform_fee_percent?: number
+          shipping_cost?: number
+          status?: string
+        }
+        Update: {
+          collected_at?: string | null
+          courier_fee?: number
+          created_at?: string
+          fee_type?: string
+          id?: string
+          merchant_id?: string | null
+          merchant_revenue?: number
+          order_id?: string | null
+          order_total?: number
+          platform_fee?: number
+          platform_fee_percent?: number
+          shipping_cost?: number
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_fees_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_fees_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
             referencedColumns: ["id"]
           },
         ]
