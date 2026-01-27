@@ -1,0 +1,203 @@
+import type { Product, Village, Tourism, Merchant } from '@/types';
+
+// Import images
+import heroVillage from '@/assets/hero-village.jpg';
+import villageBojong from '@/assets/village-bojong.jpg';
+import villageSukamaju from '@/assets/village-sukamaju.jpg';
+import productKeripik from '@/assets/product-keripik.jpg';
+import productKopi from '@/assets/product-kopi.jpg';
+import productAnyaman from '@/assets/product-anyaman.jpg';
+import productSambal from '@/assets/product-sambal.jpg';
+
+export const heroImage = heroVillage;
+
+export const villages: Village[] = [
+  {
+    id: '1',
+    name: 'Desa Bojong',
+    district: 'Megamendung',
+    regency: 'Bogor',
+    description: 'Desa wisata dengan pemandangan sawah terasering yang memukau dan udara sejuk pegunungan.',
+    image: villageBojong,
+    isActive: true,
+  },
+  {
+    id: '2',
+    name: 'Desa Sukamaju',
+    district: 'Cisarua',
+    regency: 'Sukabumi',
+    description: 'Desa dengan kebun teh yang indah dan arsitektur tradisional Sunda yang masih terjaga.',
+    image: villageSukamaju,
+    isActive: true,
+  },
+];
+
+export const merchants: Merchant[] = [
+  {
+    id: '1',
+    userId: 'u1',
+    name: 'Warung Bu Siti',
+    address: 'Jl. Sawah Indah No. 5',
+    villageId: '1',
+    villageName: 'Desa Bojong',
+    openTime: '08:00',
+    closeTime: '17:00',
+    classificationPrice: 'UNDER_5K',
+    status: 'ACTIVE',
+    orderMode: 'ADMIN_ASSISTED',
+    ratingAvg: 4.8,
+    ratingCount: 124,
+    badge: 'VERIFIED',
+    phone: '081234567890',
+    isOpen: true,
+  },
+  {
+    id: '2',
+    userId: 'u2',
+    name: 'Kopi Desa',
+    address: 'Jl. Perkebunan No. 12',
+    villageId: '1',
+    villageName: 'Desa Bojong',
+    openTime: '07:00',
+    closeTime: '20:00',
+    classificationPrice: 'FROM_10K_TO_20K',
+    status: 'ACTIVE',
+    orderMode: 'SELF',
+    ratingAvg: 4.9,
+    ratingCount: 89,
+    badge: 'POPULAR',
+    phone: '081234567891',
+    isOpen: true,
+  },
+  {
+    id: '3',
+    userId: 'u3',
+    name: 'Kerajinan Mandiri',
+    address: 'Kampung Kriya Rt 03/02',
+    villageId: '2',
+    villageName: 'Desa Sukamaju',
+    openTime: '09:00',
+    closeTime: '16:00',
+    classificationPrice: 'ABOVE_20K',
+    status: 'ACTIVE',
+    orderMode: 'ADMIN_ASSISTED',
+    ratingAvg: 4.7,
+    ratingCount: 56,
+    badge: 'VERIFIED',
+    phone: '081234567892',
+    isOpen: true,
+  },
+  {
+    id: '4',
+    userId: 'u4',
+    name: 'Dapur Emak',
+    address: 'Jl. Kuliner Desa No. 8',
+    villageId: '1',
+    villageName: 'Desa Bojong',
+    openTime: '06:00',
+    closeTime: '18:00',
+    classificationPrice: 'FROM_5K_TO_10K',
+    status: 'ACTIVE',
+    orderMode: 'ADMIN_ASSISTED',
+    ratingAvg: 4.6,
+    ratingCount: 203,
+    phone: '081234567893',
+    isOpen: true,
+  },
+];
+
+export const products: Product[] = [
+  {
+    id: '1',
+    merchantId: '1',
+    merchantName: 'Warung Bu Siti',
+    merchantVillage: 'Desa Bojong',
+    name: 'Keripik Pisang Manis',
+    description: 'Keripik pisang renyah dengan rasa manis gurih khas desa. Dibuat dari pisang pilihan yang diolah dengan cara tradisional.',
+    price: 15000,
+    stock: 50,
+    image: productKeripik,
+    category: 'kuliner',
+    isActive: true,
+    isPromo: true,
+  },
+  {
+    id: '2',
+    merchantId: '2',
+    merchantName: 'Kopi Desa',
+    merchantVillage: 'Desa Bojong',
+    name: 'Kopi Bubuk Robusta',
+    description: 'Kopi robusta pilihan dari kebun kopi desa, digiling halus dengan aroma yang kuat dan rasa yang nikmat.',
+    price: 35000,
+    stock: 30,
+    image: productKopi,
+    category: 'kuliner',
+    isActive: true,
+  },
+  {
+    id: '3',
+    merchantId: '3',
+    merchantName: 'Kerajinan Mandiri',
+    merchantVillage: 'Desa Sukamaju',
+    name: 'Tas Anyaman Bambu',
+    description: 'Tas anyaman bambu buatan tangan dengan desain modern namun tetap tradisional. Cocok untuk berbagai acara.',
+    price: 75000,
+    stock: 15,
+    image: productAnyaman,
+    category: 'kriya',
+    isActive: true,
+  },
+  {
+    id: '4',
+    merchantId: '4',
+    merchantName: 'Dapur Emak',
+    merchantVillage: 'Desa Bojong',
+    name: 'Sambal Bawang Botol',
+    description: 'Sambal bawang pedas gurih dalam kemasan botol, tahan lama dan cocok untuk oleh-oleh.',
+    price: 20000,
+    stock: 100,
+    image: productSambal,
+    category: 'kuliner',
+    isActive: true,
+    isPromo: true,
+  },
+];
+
+export const tourismSpots: Tourism[] = [
+  {
+    id: '1',
+    villageId: '1',
+    villageName: 'Desa Bojong',
+    name: 'Kampung Awan & Sawah',
+    description: 'Menawarkan pengalaman otentik hidup di desa dengan pemandangan sawah terasering yang memukau mata. Udara sejuk pegunungan dan keramahan warga lokal akan membuat liburan Anda tak terlupakan. Nikmati suasana pagi yang berkabut dan sore yang indah dengan latar gunung.',
+    image: villageBojong,
+    locationLat: -6.7234,
+    locationLng: 106.9123,
+    waLink: 'https://wa.me/6281234567890',
+    sosmedLink: 'https://instagram.com/kampungawan',
+    facilities: ['Area Parkir Luas', 'Toilet Bersih', 'Spot Foto', 'Warung Makan', 'Mushola', 'Penginapan'],
+    isActive: true,
+    viewCount: 1523,
+  },
+  {
+    id: '2',
+    villageId: '2',
+    villageName: 'Desa Sukamaju',
+    name: 'Kebun Teh Panorama',
+    description: 'Hamparan kebun teh yang hijau dengan pemandangan pegunungan. Udara segar dan suasana tenang cocok untuk melepas penat.',
+    image: villageSukamaju,
+    locationLat: -6.8123,
+    locationLng: 106.8234,
+    waLink: 'https://wa.me/6281234567891',
+    facilities: ['Parkir', 'Toilet', 'Warung', 'Spot Foto'],
+    isActive: true,
+    viewCount: 892,
+  },
+];
+
+export const categories = [
+  { id: 'kuliner', name: 'Kuliner', icon: 'utensils', colorClass: 'category-kuliner' },
+  { id: 'fashion', name: 'Fashion', icon: 'shirt', colorClass: 'category-fashion' },
+  { id: 'kriya', name: 'Kriya', icon: 'shapes', colorClass: 'category-kriya' },
+  { id: 'wisata', name: 'Wisata', icon: 'map-location-dot', colorClass: 'category-wisata' },
+] as const;
