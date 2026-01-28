@@ -1406,6 +1406,75 @@ export type Database = {
           },
         ]
       }
+      saved_addresses: {
+        Row: {
+          address_detail: string | null
+          city_id: string | null
+          city_name: string | null
+          created_at: string
+          district_id: string | null
+          district_name: string | null
+          full_address: string | null
+          id: string
+          is_default: boolean
+          label: string
+          lat: number | null
+          lng: number | null
+          phone: string
+          province_id: string | null
+          province_name: string | null
+          recipient_name: string
+          updated_at: string
+          user_id: string
+          village_id: string | null
+          village_name: string | null
+        }
+        Insert: {
+          address_detail?: string | null
+          city_id?: string | null
+          city_name?: string | null
+          created_at?: string
+          district_id?: string | null
+          district_name?: string | null
+          full_address?: string | null
+          id?: string
+          is_default?: boolean
+          label?: string
+          lat?: number | null
+          lng?: number | null
+          phone: string
+          province_id?: string | null
+          province_name?: string | null
+          recipient_name: string
+          updated_at?: string
+          user_id: string
+          village_id?: string | null
+          village_name?: string | null
+        }
+        Update: {
+          address_detail?: string | null
+          city_id?: string | null
+          city_name?: string | null
+          created_at?: string
+          district_id?: string | null
+          district_name?: string | null
+          full_address?: string | null
+          id?: string
+          is_default?: boolean
+          label?: string
+          lat?: number | null
+          lng?: number | null
+          phone?: string
+          province_id?: string | null
+          province_name?: string | null
+          recipient_name?: string
+          updated_at?: string
+          user_id?: string
+          village_id?: string | null
+          village_name?: string | null
+        }
+        Relationships: []
+      }
       tourism: {
         Row: {
           created_at: string

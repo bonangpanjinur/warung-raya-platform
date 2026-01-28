@@ -24,6 +24,7 @@ import SearchResultsPage from "./pages/SearchResultsPage";
 import OrdersPage from "./pages/OrdersPage";
 import AccountPage from "./pages/AccountPage";
 import SettingsPage from "./pages/SettingsPage";
+import SavedAddressesPage from "./pages/SavedAddressesPage";
 import AuthPage from "./pages/AuthPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
@@ -159,6 +160,11 @@ const App = () => (
               <Route path="/settings" element={
                 <ProtectedRoute>
                   <SettingsPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/addresses" element={
+                <ProtectedRoute>
+                  <SavedAddressesPage />
                 </ProtectedRoute>
               } />
 
