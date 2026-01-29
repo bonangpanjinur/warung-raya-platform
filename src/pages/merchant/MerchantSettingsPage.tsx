@@ -44,9 +44,10 @@ const BUSINESS_CATEGORIES = [
 ];
 
 const PRICE_CLASSIFICATIONS = [
-  { value: '$', label: 'Murah ($)' },
-  { value: '$$', label: 'Sedang ($$)' },
-  { value: '$$$', label: 'Mahal ($$$)' },
+  { value: 'UNDER_5K', label: 'Sangat Murah (< Rp 5.000)' },
+  { value: 'FROM_5K_TO_10K', label: 'Murah (Rp 5.000 - Rp 10.000)' },
+  { value: 'FROM_10K_TO_20K', label: 'Sedang (Rp 10.000 - Rp 20.000)' },
+  { value: 'ABOVE_20K', label: 'Premium (> Rp 20.000)' },
 ];
 
 export default function MerchantSettingsPage() {
