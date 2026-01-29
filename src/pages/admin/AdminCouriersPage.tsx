@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bike, Eye, Check, X, MoreHorizontal } from 'lucide-react';
+import { Bike, Eye, Check, X, MoreHorizontal, Edit, Trash2 } from 'lucide-react';
 import { AdminLayout } from '@/components/admin/AdminLayout';
 import { DataTable } from '@/components/admin/DataTable';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { AddCourierDialog } from '@/components/admin/AddCourierDialog';
+import { CourierEditDialog } from '@/components/admin/CourierEditDialog';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { approveCourier, rejectCourier } from '@/lib/adminApi';
@@ -36,6 +37,8 @@ export default function AdminCouriersPage() {
   const navigate = useNavigate();
   const [couriers, setCouriers] = useState<CourierRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedCourier, setSelectedCourier] = useState<CourierRow | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   const fetchCouriers = async () => {
     try {
@@ -79,6 +82,29 @@ export default function AdminCouriersPage() {
     } else {
       toast.error('Gagal menolak kurir');
     }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Apakah Anda yakin ingin menghapus kurir ini?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('couriers')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      toast.success('Kurir berhasil dihapus');
+      fetchCouriers();
+    } catch (error) {
+      console.error('Error deleting courier:', error);
+      toast.error('Gagal menghapus kurir');
+    }
+  };
+
+  const handleEdit = (courier: CourierRow) => {
+    setSelectedCourier(courier);
+    setEditDialogOpen(true);
   };
 
   const getStatusBadge = (regStatus: string, status: string, isAvailable: boolean) => {
@@ -162,9 +188,13 @@ export default function AdminCouriersPage() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => navigate(`/admin/couriers/${item.id}`)}>
-              <Eye className="h-4 w-4 mr-2" />
-              Lihat Detail
+            <DropdownMenuItem onClick={() => handleEdit(item)}>
+              <Edit className="h-4 w-4 mr-2" />
+              Edit Data
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleDelete(item.id)} className="text-destructive">
+              <Trash2 className="h-4 w-4 mr-2" />
+              Hapus Kurir
             </DropdownMenuItem>
             {item.registration_status === 'PENDING' && (
               <>
@@ -226,6 +256,15 @@ export default function AdminCouriersPage() {
         loading={loading}
         emptyMessage="Belum ada kurir terdaftar"
       />
+
+      {selectedCourier && (
+        <CourierEditDialog
+          open={editDialogOpen}
+          onOpenChange={setEditDialogOpen}
+          courier={selectedCourier}
+          onSuccess={fetchCouriers}
+        />
+      )}
     </AdminLayout>
   );
 }
