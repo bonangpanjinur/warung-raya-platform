@@ -28,6 +28,7 @@ interface CourierEditDialogProps {
 
 export function CourierEditDialog({ open, onOpenChange, courier, onSuccess }: CourierEditDialogProps) {
   const [loading, setLoading] = useState(false);
+  const [villages, setVillages] = useState<{id: string, name: string}[]>([]);
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -41,7 +42,19 @@ export function CourierEditDialog({ open, onOpenChange, courier, onSuccess }: Co
     vehicle_type: '',
     vehicle_plate: '',
     status: '',
+    village_id: '',
   });
+
+  useEffect(() => {
+    const fetchVillages = async () => {
+      const { data } = await supabase.from('villages').select('id, name').order('name');
+      if (data) setVillages(data);
+    };
+    
+    if (open) {
+      fetchVillages();
+    }
+  }, [open]);
 
   useEffect(() => {
     if (courier) {
@@ -58,6 +71,7 @@ export function CourierEditDialog({ open, onOpenChange, courier, onSuccess }: Co
         vehicle_type: courier.vehicle_type || 'motor',
         vehicle_plate: courier.vehicle_plate || '',
         status: courier.status || 'ACTIVE',
+        village_id: courier.village_id || '',
       });
     }
   }, [courier]);
@@ -85,6 +99,8 @@ export function CourierEditDialog({ open, onOpenChange, courier, onSuccess }: Co
           vehicle_type: formData.vehicle_type,
           vehicle_plate: formData.vehicle_plate || null,
           status: formData.status,
+          village_id: formData.village_id || null,
+          updated_at: new Date().toISOString(),
         })
         .eq('id', courier.id);
 
@@ -93,9 +109,9 @@ export function CourierEditDialog({ open, onOpenChange, courier, onSuccess }: Co
       toast.success('Data kurir berhasil diperbarui');
       onOpenChange(false);
       onSuccess();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating courier:', error);
-      toast.error('Gagal memperbarui data kurir');
+      toast.error('Gagal memperbarui data kurir: ' + (error.message || 'Terjadi kesalahan'));
     } finally {
       setLoading(false);
     }
@@ -108,13 +124,14 @@ export function CourierEditDialog({ open, onOpenChange, courier, onSuccess }: Co
           <DialogTitle>Edit Data Kurir</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-4 py-2">
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
               <Label>Nama Lengkap *</Label>
               <Input
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="Nama sesuai KTP"
               />
             </div>
             <div>
@@ -122,6 +139,7 @@ export function CourierEditDialog({ open, onOpenChange, courier, onSuccess }: Co
               <Input
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                placeholder="08xxxx"
               />
             </div>
             <div>
@@ -130,6 +148,7 @@ export function CourierEditDialog({ open, onOpenChange, courier, onSuccess }: Co
                 type="email"
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                placeholder="email@contoh.com"
               />
             </div>
           </div>
@@ -140,6 +159,7 @@ export function CourierEditDialog({ open, onOpenChange, courier, onSuccess }: Co
               value={formData.ktp_number}
               onChange={(e) => setFormData({ ...formData, ktp_number: e.target.value })}
               maxLength={16}
+              placeholder="16 digit nomor KTP"
             />
           </div>
 
@@ -179,6 +199,7 @@ export function CourierEditDialog({ open, onOpenChange, courier, onSuccess }: Co
             <Input
               value={formData.address}
               onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+              placeholder="Nama jalan, nomor rumah, dll"
             />
           </div>
 
@@ -204,28 +225,48 @@ export function CourierEditDialog({ open, onOpenChange, courier, onSuccess }: Co
               <Input
                 value={formData.vehicle_plate}
                 onChange={(e) => setFormData({ ...formData, vehicle_plate: e.target.value.toUpperCase() })}
+                placeholder="B 1234 ABC"
               />
             </div>
           </div>
 
-          <div>
-            <Label>Status Akun</Label>
-            <Select
-              value={formData.status}
-              onValueChange={(v) => setFormData({ ...formData, status: v })}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ACTIVE">Aktif</SelectItem>
-                <SelectItem value="INACTIVE">Nonaktif</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Wilayah Desa (Opsional)</Label>
+              <Select
+                value={formData.village_id || "none"}
+                onValueChange={(v) => setFormData({ ...formData, village_id: v === "none" ? "" : v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih Desa" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Tanpa Wilayah</SelectItem>
+                  {villages.map(v => (
+                    <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Status Akun</Label>
+              <Select
+                value={formData.status}
+                onValueChange={(v) => setFormData({ ...formData, status: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ACTIVE">Aktif</SelectItem>
+                  <SelectItem value="INACTIVE">Nonaktif</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="mt-6">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Batal
           </Button>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,6 +28,7 @@ interface AddCourierDialogProps {
 export function AddCourierDialog({ onSuccess }: AddCourierDialogProps) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [villages, setVillages] = useState<{id: string, name: string}[]>([]);
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -40,7 +41,19 @@ export function AddCourierDialog({ onSuccess }: AddCourierDialogProps) {
     ktp_number: '',
     vehicle_type: 'motor',
     vehicle_plate: '',
+    village_id: '',
   });
+
+  useEffect(() => {
+    const fetchVillages = async () => {
+      const { data } = await supabase.from('villages').select('id, name').order('name');
+      if (data) setVillages(data);
+    };
+    
+    if (open) {
+      fetchVillages();
+    }
+  }, [open]);
 
   const handleSubmit = async () => {
     if (!formData.name || !formData.phone || !formData.ktp_number) {
@@ -60,25 +73,26 @@ export function AddCourierDialog({ onSuccess }: AddCourierDialogProps) {
         subdistrict: formData.subdistrict,
         address: formData.address,
         ktp_number: formData.ktp_number,
-        ktp_image_url: 'https://placeholder.co/400x300?text=KTP', // Placeholder for admin-added
+        ktp_image_url: 'https://placeholder.co/400x300?text=KTP', 
         photo_url: 'https://placeholder.co/200x200?text=Foto',
         vehicle_type: formData.vehicle_type,
         vehicle_plate: formData.vehicle_plate || null,
         vehicle_image_url: 'https://placeholder.co/400x300?text=Kendaraan',
-        registration_status: 'APPROVED', // Direct approval by admin
+        registration_status: 'APPROVED', 
         status: 'ACTIVE',
         approved_at: new Date().toISOString(),
+        village_id: formData.village_id || null,
       });
 
       if (error) throw error;
 
-      toast.success('Kurir berhasil ditambahkan');
+      toast.success('Kurir berhasil ditambahkan dan otomatis aktif');
       setOpen(false);
       resetForm();
       onSuccess();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error adding courier:', error);
-      toast.error('Gagal menambahkan kurir');
+      toast.error('Gagal menambahkan kurir: ' + (error.message || 'Terjadi kesalahan'));
     } finally {
       setLoading(false);
     }
@@ -97,13 +111,14 @@ export function AddCourierDialog({ onSuccess }: AddCourierDialogProps) {
       ktp_number: '',
       vehicle_type: 'motor',
       vehicle_plate: '',
+      village_id: '',
     });
   };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>
+        <Button className="h-9">
           <Plus className="h-4 w-4 mr-2" />
           Tambah Kurir
         </Button>
@@ -113,7 +128,7 @@ export function AddCourierDialog({ onSuccess }: AddCourierDialogProps) {
           <DialogTitle>Tambah Kurir Baru</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-4 py-2">
           {/* Basic Info */}
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
@@ -121,7 +136,7 @@ export function AddCourierDialog({ onSuccess }: AddCourierDialogProps) {
               <Input
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Nama kurir"
+                placeholder="Nama kurir sesuai KTP"
               />
             </div>
             <div>
@@ -198,7 +213,7 @@ export function AddCourierDialog({ onSuccess }: AddCourierDialogProps) {
             />
           </div>
 
-          {/* Vehicle */}
+          {/* Vehicle & Village */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label>Jenis Kendaraan</Label>
@@ -225,9 +240,27 @@ export function AddCourierDialog({ onSuccess }: AddCourierDialogProps) {
               />
             </div>
           </div>
+          
+          <div>
+            <Label>Wilayah Desa (Opsional)</Label>
+            <Select
+              value={formData.village_id || "none"}
+              onValueChange={(v) => setFormData({ ...formData, village_id: v === "none" ? "" : v })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Pilih Desa" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Tanpa Wilayah</SelectItem>
+                {villages.map(v => (
+                  <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="mt-6">
           <Button variant="outline" onClick={() => setOpen(false)}>
             Batal
           </Button>

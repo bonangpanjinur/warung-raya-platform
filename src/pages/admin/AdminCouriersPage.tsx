@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bike, Eye, Check, X, MoreHorizontal, Edit, Trash2 } from 'lucide-react';
+import { Bike, Eye, Check, X, MoreHorizontal, Edit, Trash2, RefreshCw } from 'lucide-react';
 import { AdminLayout } from '@/components/admin/AdminLayout';
 import { DataTable } from '@/components/admin/DataTable';
 import { Badge } from '@/components/ui/badge';
@@ -24,6 +24,9 @@ interface CourierRow {
   email: string | null;
   city: string;
   district: string;
+  subdistrict: string;
+  address: string;
+  ktp_number: string;
   vehicle_type: string;
   vehicle_plate: string | null;
   registration_status: string;
@@ -31,6 +34,8 @@ interface CourierRow {
   is_available: boolean;
   registered_at: string | null;
   last_location_update: string | null;
+  village_id: string | null;
+  villages?: { name: string } | null;
 }
 
 export default function AdminCouriersPage() {
@@ -41,17 +46,27 @@ export default function AdminCouriersPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   const fetchCouriers = async () => {
+    setLoading(true);
     try {
       const { data, error } = await supabase
         .from('couriers')
-        .select('id, name, phone, email, city, district, vehicle_type, vehicle_plate, registration_status, status, is_available, registered_at, last_location_update')
+        .select(`
+          id, name, phone, email, city, district, subdistrict, address, 
+          ktp_number, vehicle_type, vehicle_plate, registration_status, 
+          status, is_available, registered_at, last_location_update, village_id,
+          villages(name)
+        `)
         .order('registered_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
+      
       setCouriers(data || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching couriers:', error);
-      toast.error('Gagal memuat data kurir');
+      toast.error('Gagal memuat data kurir: ' + (error.message || 'Terjadi kesalahan'));
     } finally {
       setLoading(false);
     }
@@ -62,30 +77,42 @@ export default function AdminCouriersPage() {
   }, []);
 
   const handleApprove = async (id: string) => {
-    const success = await approveCourier(id);
-    if (success) {
-      toast.success('Kurir berhasil disetujui');
-      fetchCouriers();
-    } else {
-      toast.error('Gagal menyetujui kurir');
+    try {
+      const success = await approveCourier(id);
+      if (success) {
+        toast.success('Kurir berhasil disetujui');
+        fetchCouriers();
+      } else {
+        toast.error('Gagal menyetujui kurir');
+      }
+    } catch (error) {
+      toast.error('Terjadi kesalahan saat menyetujui kurir');
     }
   };
 
   const handleReject = async (id: string) => {
     const reason = prompt('Alasan penolakan:');
-    if (!reason) return;
+    if (reason === null) return; // User cancelled
+    if (!reason.trim()) {
+      toast.error('Alasan penolakan wajib diisi');
+      return;
+    }
     
-    const success = await rejectCourier(id, reason);
-    if (success) {
-      toast.success('Kurir ditolak');
-      fetchCouriers();
-    } else {
-      toast.error('Gagal menolak kurir');
+    try {
+      const success = await rejectCourier(id, reason);
+      if (success) {
+        toast.success('Kurir ditolak');
+        fetchCouriers();
+      } else {
+        toast.error('Gagal menolak kurir');
+      }
+    } catch (error) {
+      toast.error('Terjadi kesalahan saat menolak kurir');
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus kurir ini?')) return;
+    if (!confirm('Apakah Anda yakin ingin menghapus kurir ini? Semua data terkait akan ikut terhapus.')) return;
 
     try {
       const { error } = await supabase
@@ -96,9 +123,9 @@ export default function AdminCouriersPage() {
       if (error) throw error;
       toast.success('Kurir berhasil dihapus');
       fetchCouriers();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting courier:', error);
-      toast.error('Gagal menghapus kurir');
+      toast.error('Gagal menghapus kurir: ' + (error.message || 'Terjadi kesalahan'));
     }
   };
 
@@ -109,18 +136,18 @@ export default function AdminCouriersPage() {
 
   const getStatusBadge = (regStatus: string, status: string, isAvailable: boolean) => {
     if (regStatus === 'PENDING') {
-      return <Badge variant="secondary" className="bg-warning/10 text-warning">Menunggu</Badge>;
+      return <Badge variant="secondary" className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-amber-200">Menunggu</Badge>;
     }
     if (regStatus === 'REJECTED') {
       return <Badge variant="destructive">Ditolak</Badge>;
     }
     if (status === 'ACTIVE' && isAvailable) {
-      return <Badge className="bg-success/10 text-success">Online</Badge>;
+      return <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-emerald-200">Online</Badge>;
     }
     if (status === 'ACTIVE') {
-      return <Badge variant="outline">Offline</Badge>;
+      return <Badge variant="outline" className="text-muted-foreground">Offline</Badge>;
     }
-    return <Badge variant="outline">Nonaktif</Badge>;
+    return <Badge variant="outline" className="bg-slate-100 text-slate-500">Nonaktif</Badge>;
   };
 
   const columns = [
@@ -128,9 +155,14 @@ export default function AdminCouriersPage() {
       key: 'name',
       header: 'Nama Kurir',
       render: (item: CourierRow) => (
-        <div>
-          <p className="font-medium">{item.name}</p>
-          <p className="text-xs text-muted-foreground">{item.email || '-'}</p>
+        <div className="flex flex-col">
+          <span className="font-semibold text-foreground">{item.name}</span>
+          <span className="text-xs text-muted-foreground">{item.email || '-'}</span>
+          {item.villages?.name && (
+            <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full w-fit mt-1">
+              {item.villages.name}
+            </span>
+          )}
         </div>
       ),
     },
@@ -138,9 +170,9 @@ export default function AdminCouriersPage() {
       key: 'vehicle',
       header: 'Kendaraan',
       render: (item: CourierRow) => (
-        <div className="text-sm">
-          <p className="capitalize">{item.vehicle_type}</p>
-          <p className="text-xs text-muted-foreground">{item.vehicle_plate || '-'}</p>
+        <div className="flex flex-col">
+          <span className="capitalize text-sm font-medium">{item.vehicle_type}</span>
+          <span className="text-xs text-muted-foreground font-mono">{item.vehicle_plate || '-'}</span>
         </div>
       ),
     },
@@ -148,16 +180,20 @@ export default function AdminCouriersPage() {
       key: 'location',
       header: 'Lokasi',
       render: (item: CourierRow) => (
-        <div className="text-sm">
-          <p>{item.district}</p>
-          <p className="text-xs text-muted-foreground">{item.city}</p>
+        <div className="flex flex-col">
+          <span className="text-sm">{item.district}</span>
+          <span className="text-xs text-muted-foreground">{item.city}</span>
         </div>
       ),
     },
     {
       key: 'phone',
       header: 'Telepon',
-      render: (item: CourierRow) => item.phone,
+      render: (item: CourierRow) => (
+        <a href={`https://wa.me/${item.phone.replace(/^0/, '62')}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium">
+          {item.phone}
+        </a>
+      ),
     },
     {
       key: 'status',
@@ -168,13 +204,15 @@ export default function AdminCouriersPage() {
       key: 'last_active',
       header: 'Terakhir Aktif',
       render: (item: CourierRow) => {
-        if (!item.last_location_update) return '-';
+        if (!item.last_location_update) return <span className="text-muted-foreground text-xs">-</span>;
         const date = new Date(item.last_location_update);
         const now = new Date();
         const diffMinutes = Math.floor((now.getTime() - date.getTime()) / 60000);
-        if (diffMinutes < 5) return <span className="text-success">Baru saja</span>;
-        if (diffMinutes < 60) return `${diffMinutes} menit lalu`;
-        return date.toLocaleDateString('id-ID');
+        
+        if (diffMinutes < 5) return <span className="text-emerald-600 font-medium text-xs">Baru saja</span>;
+        if (diffMinutes < 60) return <span className="text-xs">{diffMinutes} menit lalu</span>;
+        if (diffMinutes < 1440) return <span className="text-xs">{Math.floor(diffMinutes / 60)} jam lalu</span>;
+        return <span className="text-xs">{date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>;
       },
     },
     {
@@ -183,31 +221,33 @@ export default function AdminCouriersPage() {
       render: (item: CourierRow) => (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon">
+            <Button variant="ghost" size="icon" className="h-8 w-8">
               <MoreHorizontal className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" className="w-48">
             <DropdownMenuItem onClick={() => handleEdit(item)}>
-              <Edit className="h-4 w-4 mr-2" />
+              <Edit className="h-4 w-4 mr-2 text-blue-500" />
               Edit Data
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleDelete(item.id)} className="text-destructive">
-              <Trash2 className="h-4 w-4 mr-2" />
-              Hapus Kurir
-            </DropdownMenuItem>
+            
             {item.registration_status === 'PENDING' && (
               <>
-                <DropdownMenuItem onClick={() => handleApprove(item.id)}>
+                <DropdownMenuItem onClick={() => handleApprove(item.id)} className="text-emerald-600 focus:text-emerald-600">
                   <Check className="h-4 w-4 mr-2" />
-                  Setujui
+                  Setujui Kurir
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleReject(item.id)} className="text-destructive">
+                <DropdownMenuItem onClick={() => handleReject(item.id)} className="text-amber-600 focus:text-amber-600">
                   <X className="h-4 w-4 mr-2" />
-                  Tolak
+                  Tolak Kurir
                 </DropdownMenuItem>
               </>
             )}
+            
+            <DropdownMenuItem onClick={() => handleDelete(item.id)} className="text-destructive focus:text-destructive">
+              <Trash2 className="h-4 w-4 mr-2" />
+              Hapus Kurir
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       ),
@@ -233,28 +273,54 @@ export default function AdminCouriersPage() {
         { value: 'sepeda', label: 'Sepeda' },
       ],
     },
+    {
+      key: 'status',
+      label: 'Status Akun',
+      options: [
+        { value: 'ACTIVE', label: 'Aktif' },
+        { value: 'INACTIVE', label: 'Nonaktif' },
+      ],
+    },
   ];
 
   return (
-    <AdminLayout title="Manajemen Kurir" subtitle="Kelola semua kurir yang terdaftar">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Bike className="h-5 w-5 text-primary" />
-          <span className="text-muted-foreground text-sm">
-            {couriers.length} kurir terdaftar • {couriers.filter(c => c.is_available).length} online
-          </span>
+    <AdminLayout title="Manajemen Kurir" subtitle="Kelola dan verifikasi semua kurir yang terdaftar di platform">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-3">
+          <div className="bg-primary/10 p-2.5 rounded-xl">
+            <Bike className="h-6 w-6 text-primary" />
+          </div>
+          <div className="flex flex-col">
+            <h2 className="text-lg font-bold">Daftar Kurir</h2>
+            <span className="text-muted-foreground text-xs">
+              {couriers.length} kurir terdaftar • {couriers.filter(c => c.is_available).length} online
+            </span>
+          </div>
         </div>
-        <AddCourierDialog onSuccess={fetchCouriers} />
+        
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={fetchCouriers} 
+            disabled={loading}
+            className="h-9"
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+          <AddCourierDialog onSuccess={fetchCouriers} />
+        </div>
       </div>
 
       <DataTable
         data={couriers}
         columns={columns}
-        searchKey="name"
-        searchPlaceholder="Cari nama kurir..."
+        searchKeys={['name', 'phone', 'email', 'district', 'city']}
+        searchPlaceholder="Cari kurir (nama, telp, lokasi)..."
         filters={filters}
         loading={loading}
-        emptyMessage="Belum ada kurir terdaftar"
+        emptyMessage="Belum ada data kurir yang sesuai kriteria"
       />
 
       {selectedCourier && (
