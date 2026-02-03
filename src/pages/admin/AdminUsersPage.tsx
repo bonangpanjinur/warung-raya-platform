@@ -1,10 +1,15 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Users, Search, Ban, CheckCircle, Eye, Filter, Download, MoreHorizontal, ChevronLeft, ChevronRight, UserPlus, Mail, Lock, Phone, User } from 'lucide-react';
+import { 
+  Users, Search, Ban, CheckCircle, Eye, Filter, Download, 
+  MoreHorizontal, ChevronLeft, ChevronRight, UserPlus, 
+  Mail, Lock, Phone, User, Shield, AlertCircle, XCircle
+} from 'lucide-react';
 import { AdminLayout } from '@/components/admin/AdminLayout';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import {
   Table,
   TableBody,
@@ -18,6 +23,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import {
   Dialog,
@@ -54,6 +60,15 @@ interface UserProfile {
   roles: string[];
 }
 
+const AVAILABLE_ROLES = [
+  { id: 'admin', label: 'Admin' },
+  { id: 'verifikator', label: 'Verifikator' },
+  { id: 'merchant', label: 'Merchant' },
+  { id: 'courier', label: 'Kurir' },
+  { id: 'admin_desa', label: 'Admin Desa' },
+  { id: 'buyer', label: 'Pembeli' },
+];
+
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,7 +81,7 @@ export default function AdminUsersPage() {
   const [blockReason, setBlockReason] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 15;
+  const pageSize = 10;
 
   // Add User Form State
   const [newUser, setNewUser] = useState({
@@ -171,7 +186,7 @@ export default function AdminUsersPage() {
           .from('user_roles')
           .insert({
             user_id: userId,
-            role: newUser.role
+            role: newUser.role as any
           });
         
         if (roleError) throw roleError;
@@ -307,347 +322,438 @@ export default function AdminUsersPage() {
     link.href = URL.createObjectURL(blob);
     link.download = `users_${format(new Date(), 'yyyyMMdd')}.csv`;
     link.click();
+    toast.success('Data pengguna berhasil diekspor');
   };
 
-  const getRoleBadgeColor = (role: string) => {
+  const getRoleBadgeVariant = (role: string) => {
     switch (role) {
-      case 'admin': return 'bg-destructive text-destructive-foreground';
-      case 'merchant': return 'bg-primary text-primary-foreground';
-      case 'courier': return 'bg-info text-info-foreground';
-      case 'verifikator': return 'bg-warning text-warning-foreground';
-      case 'admin_desa': return 'bg-success text-success-foreground';
-      default: return 'bg-secondary text-secondary-foreground';
+      case 'admin': return 'destructive';
+      case 'merchant': return 'default';
+      case 'courier': return 'outline';
+      case 'verifikator': return 'secondary';
+      case 'admin_desa': return 'default';
+      default: return 'secondary';
     }
   };
 
   return (
-    <AdminLayout title="Manajemen Pengguna" subtitle="Kelola semua pengguna aplikasi">
-      {/* Actions & Filters */}
-      <div className="flex flex-col gap-4 mb-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Users className="h-5 w-5 text-primary" />
-            <h2 className="text-lg font-semibold">Daftar Pengguna</h2>
-            <Badge variant="secondary">{users.length}</Badge>
-          </div>
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <Button onClick={() => setAddDialogOpen(true)} className="flex-1 sm:flex-none">
-              <UserPlus className="h-4 w-4 mr-2" />
-              Tambah Pengguna
-            </Button>
-            <Button variant="outline" onClick={exportToCSV} className="flex-1 sm:flex-none">
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
-          </div>
+    <AdminLayout title="Manajemen Pengguna" subtitle="Kelola semua akun pengguna dan status akses mereka">
+      <div className="space-y-6">
+        {/* Statistics Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Card className="bg-primary/5 border-primary/20">
+            <CardContent className="p-4 flex items-center gap-4">
+              <div className="p-3 bg-primary/10 rounded-full">
+                <Users className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Total Pengguna</p>
+                <p className="text-2xl font-bold">{users.length}</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-green-500/5 border-green-500/20">
+            <CardContent className="p-4 flex items-center gap-4">
+              <div className="p-3 bg-green-500/10 rounded-full">
+                <CheckCircle className="h-6 w-6 text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Aktif</p>
+                <p className="text-2xl font-bold text-green-600">{users.filter(u => !u.isBlocked).length}</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-destructive/5 border-destructive/20">
+            <CardContent className="p-4 flex items-center gap-4">
+              <div className="p-3 bg-destructive/10 rounded-full">
+                <Ban className="h-6 w-6 text-destructive" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Diblokir</p>
+                <p className="text-2xl font-bold text-destructive">{users.filter(u => u.isBlocked).length}</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-blue-500/5 border-blue-500/20">
+            <CardContent className="p-4 flex items-center gap-4">
+              <div className="p-3 bg-blue-500/10 rounded-full">
+                <Shield className="h-6 w-6 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Administrator</p>
+                <p className="text-2xl font-bold text-blue-600">{users.filter(u => u.roles.includes('admin')).length}</p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Cari nama, telepon, atau ID..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-          <Select value={roleFilter} onValueChange={setRoleFilter}>
-            <SelectTrigger className="w-full sm:w-40">
-              <SelectValue placeholder="Semua Role" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Semua Role</SelectItem>
-              <SelectItem value="admin">Admin</SelectItem>
-              <SelectItem value="merchant">Merchant</SelectItem>
-              <SelectItem value="courier">Kurir</SelectItem>
-              <SelectItem value="verifikator">Verifikator</SelectItem>
-              <SelectItem value="admin_desa">Admin Desa</SelectItem>
-              <SelectItem value="buyer">Pembeli</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-full sm:w-40">
-              <SelectValue placeholder="Semua Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Semua Status</SelectItem>
-              <SelectItem value="active">Aktif</SelectItem>
-              <SelectItem value="blocked">Diblokir</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-sm text-muted-foreground">Total Pengguna</p>
-          <p className="text-2xl font-bold">{users.length}</p>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-sm text-muted-foreground">Pengguna Aktif</p>
-          <p className="text-2xl font-bold text-success">{users.filter(u => !u.isBlocked).length}</p>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-sm text-muted-foreground">Diblokir</p>
-          <p className="text-2xl font-bold text-destructive">{users.filter(u => u.isBlocked).length}</p>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-sm text-muted-foreground">Hasil Filter</p>
-          <p className="text-2xl font-bold">{filteredUsers.length}</p>
-        </div>
-      </div>
-
-      {/* Table */}
-      {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent" />
-        </div>
-      ) : (
-        <div className="bg-card border border-border rounded-xl overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Pengguna</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Terdaftar</TableHead>
-                <TableHead className="text-right">Aksi</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paginatedUsers.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center py-10 text-muted-foreground">
-                    Tidak ada pengguna ditemukan
-                  </TableCell>
-                </TableRow>
-              ) : (
-                paginatedUsers.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-10 w-10">
-                          <AvatarImage src={user.avatarUrl || undefined} />
-                          <AvatarFallback>{user.fullName.charAt(0).toUpperCase()}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="font-medium">{user.fullName}</p>
-                          <p className="text-sm text-muted-foreground">{user.phone || 'No phone'}</p>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {user.roles.map(role => (
-                          <Badge key={role} className={getRoleBadgeColor(role)} variant="secondary">
-                            {role}
-                          </Badge>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {user.isBlocked ? (
-                        <Badge variant="destructive">Diblokir</Badge>
-                      ) : (
-                        <Badge variant="success">Aktif</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {format(new Date(user.createdAt), 'dd MMM yyyy', { locale: idLocale })}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {user.isBlocked ? (
-                            <DropdownMenuItem onClick={() => handleUnblockUser(user)}>
-                              <CheckCircle className="h-4 w-4 mr-2" />
-                              Buka Blokir
-                            </DropdownMenuItem>
-                          ) : (
-                            <DropdownMenuItem 
-                              onClick={() => {
-                                setSelectedUser(user);
-                                setBlockDialogOpen(true);
-                              }}
-                              className="text-destructive"
-                            >
-                              <Ban className="h-4 w-4 mr-2" />
-                              Blokir Pengguna
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      )}
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between mt-4">
-          <p className="text-sm text-muted-foreground">
-            Menampilkan {startIndex + 1}-{Math.min(startIndex + pageSize, filteredUsers.length)} dari {filteredUsers.length}
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="text-sm px-2">
-              {currentPage} / {totalPages}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Add User Dialog */}
-      <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Tambah Pengguna Baru</DialogTitle>
-            <DialogDescription>
-              Buat akun pengguna baru secara manual. Pengguna akan menerima email konfirmasi.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <label className="text-sm font-medium flex items-center gap-2">
-                <User className="h-4 w-4" /> Nama Lengkap *
-              </label>
-              <Input
-                placeholder="Contoh: Budi Santoso"
-                value={newUser.fullName}
-                onChange={(e) => setNewUser({ ...newUser, fullName: e.target.value })}
-              />
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <CardTitle>Daftar Pengguna</CardTitle>
+                <CardDescription>Kelola akun, blokir akses, dan ekspor data pengguna</CardDescription>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={exportToCSV} className="gap-2">
+                  <Download className="h-4 w-4" /> Ekspor CSV
+                </Button>
+                <Button size="sm" onClick={() => setAddDialogOpen(true)} className="gap-2">
+                  <UserPlus className="h-4 w-4" /> Tambah Pengguna
+                </Button>
+              </div>
             </div>
-            <div className="grid gap-2">
-              <label className="text-sm font-medium flex items-center gap-2">
-                <Mail className="h-4 w-4" /> Email *
-              </label>
-              <Input
-                type="email"
-                placeholder="email@contoh.com"
-                value={newUser.email}
-                onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-              />
-            </div>
-            <div className="grid gap-2">
-              <label className="text-sm font-medium flex items-center gap-2">
-                <Lock className="h-4 w-4" /> Password *
-              </label>
-              <Input
-                type="password"
-                placeholder="Minimal 6 karakter"
-                value={newUser.password}
-                onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-              />
-            </div>
-            <div className="grid gap-2">
-              <label className="text-sm font-medium flex items-center gap-2">
-                <Phone className="h-4 w-4" /> Nomor Telepon
-              </label>
-              <Input
-                placeholder="08123456789"
-                value={newUser.phone}
-                onChange={(e) => setNewUser({ ...newUser, phone: e.target.value })}
-              />
-            </div>
-            <div className="grid gap-2">
-              <label className="text-sm font-medium">Role Pengguna</label>
-              <Select 
-                value={newUser.role} 
-                onValueChange={(value) => setNewUser({ ...newUser, role: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Pilih Role" />
+          </CardHeader>
+          <CardContent>
+            {/* Filters */}
+            <div className="flex flex-col sm:flex-row gap-3 mb-6">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Cari nama, telepon, atau ID..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              <Select value={roleFilter} onValueChange={setRoleFilter}>
+                <SelectTrigger className="w-full sm:w-[160px]">
+                  <div className="flex items-center gap-2">
+                    <Shield className="h-4 w-4" />
+                    <SelectValue placeholder="Role" />
+                  </div>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="buyer">Pembeli (Buyer)</SelectItem>
-                  <SelectItem value="merchant">Merchant</SelectItem>
-                  <SelectItem value="courier">Kurir</SelectItem>
-                  <SelectItem value="verifikator">Verifikator</SelectItem>
-                  <SelectItem value="admin_desa">Admin Desa</SelectItem>
-                  <SelectItem value="admin">Administrator</SelectItem>
+                  <SelectItem value="all">Semua Role</SelectItem>
+                  {AVAILABLE_ROLES.map(role => (
+                    <SelectItem key={role.id} value={role.id}>{role.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-full sm:w-[160px]">
+                  <div className="flex items-center gap-2">
+                    <Filter className="h-4 w-4" />
+                    <SelectValue placeholder="Status" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Status</SelectItem>
+                  <SelectItem value="active">Aktif</SelectItem>
+                  <SelectItem value="blocked">Diblokir</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
-              Batal
-            </Button>
-            <Button onClick={handleAddUser} disabled={actionLoading}>
-              {actionLoading ? 'Memproses...' : 'Simpan Pengguna'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
-      {/* Block Dialog */}
-      <Dialog open={blockDialogOpen} onOpenChange={setBlockDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Blokir Pengguna</DialogTitle>
-            <DialogDescription>
-              Pengguna yang diblokir tidak akan bisa mengakses aplikasi. Tindakan ini dapat dibatalkan.
-            </DialogDescription>
-          </DialogHeader>
-          {selectedUser && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 p-3 bg-secondary rounded-lg">
-                <Avatar>
-                  <AvatarImage src={selectedUser.avatarUrl || undefined} />
-                  <AvatarFallback>{selectedUser.fullName.charAt(0)}</AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="font-medium">{selectedUser.fullName}</p>
-                  <p className="text-sm text-muted-foreground">{selectedUser.phone}</p>
-                </div>
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-20 space-y-4">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary" />
+                <p className="text-muted-foreground">Memuat data pengguna...</p>
               </div>
-              <div>
-                <label className="text-sm font-medium mb-2 block">Alasan Blokir *</label>
-                <Textarea
-                  value={blockReason}
-                  onChange={(e) => setBlockReason(e.target.value)}
-                  placeholder="Jelaskan alasan pemblokiran..."
-                  rows={3}
+            ) : (
+              <>
+                <div className="rounded-md border overflow-hidden">
+                  <Table>
+                    <TableHeader className="bg-muted/50">
+                      <TableRow>
+                        <TableHead>Pengguna</TableHead>
+                        <TableHead>Telepon</TableHead>
+                        <TableHead>Role</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Terdaftar</TableHead>
+                        <TableHead className="text-right">Aksi</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedUsers.length > 0 ? (
+                        paginatedUsers.map((user) => (
+                          <TableRow key={user.id} className="hover:bg-muted/30 transition-colors">
+                            <TableCell>
+                              <div className="flex items-center gap-3">
+                                <Avatar className="h-9 w-9 border">
+                                  <AvatarImage src={user.avatarUrl || undefined} />
+                                  <AvatarFallback className="bg-primary/5 text-primary text-xs font-bold">
+                                    {user.fullName.substring(0, 2).toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="flex flex-col">
+                                  <span className="font-medium text-sm leading-none mb-1">{user.fullName}</span>
+                                  <span className="text-[10px] text-muted-foreground font-mono truncate max-w-[120px]">
+                                    ID: {user.userId.substring(0, 8)}...
+                                  </span>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-sm">{user.phone || '-'}</TableCell>
+                            <TableCell>
+                              <div className="flex flex-wrap gap-1">
+                                {user.roles.map((role) => (
+                                  <Badge key={role} variant={getRoleBadgeVariant(role) as any} className="text-[10px] px-1.5 py-0 uppercase">
+                                    {AVAILABLE_ROLES.find(r => r.id === role)?.label || role}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {user.isBlocked ? (
+                                <Badge variant="destructive" className="gap-1 text-[10px]">
+                                  <Ban className="h-3 w-3" /> Diblokir
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="gap-1 text-[10px] text-green-600 border-green-200 bg-green-50">
+                                  <CheckCircle className="h-3 w-3" /> Aktif
+                                </Badge>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {format(new Date(user.createdAt), 'dd MMM yyyy', { locale: idLocale })}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-48">
+                                  <DropdownMenuItem className="gap-2">
+                                    <Eye className="h-4 w-4" /> Lihat Detail
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  {user.isBlocked ? (
+                                    <DropdownMenuItem 
+                                      className="text-green-600 gap-2"
+                                      onClick={() => handleUnblockUser(user)}
+                                    >
+                                      <CheckCircle className="h-4 w-4" /> Buka Blokir
+                                    </DropdownMenuItem>
+                                  ) : (
+                                    <DropdownMenuItem 
+                                      className="text-destructive gap-2"
+                                      onClick={() => {
+                                        setSelectedUser(user);
+                                        setBlockDialogOpen(true);
+                                      }}
+                                    >
+                                      <Ban className="h-4 w-4" /> Blokir Pengguna
+                                    </DropdownMenuItem>
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={6} className="h-40 text-center">
+                            <div className="flex flex-col items-center justify-center text-muted-foreground">
+                              <Users className="h-10 w-10 mb-2 opacity-20" />
+                              <p>Tidak ada pengguna ditemukan</p>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between mt-4">
+                    <p className="text-xs text-muted-foreground">
+                      Menampilkan {startIndex + 1} - {Math.min(startIndex + pageSize, filteredUsers.length)} dari {filteredUsers.length} pengguna
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        className="h-8 w-8 p-0"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                          let pageNum = i + 1;
+                          if (totalPages > 5 && currentPage > 3) {
+                            pageNum = currentPage - 3 + i + 1;
+                            if (pageNum > totalPages) pageNum = totalPages - (4 - i);
+                          }
+                          return (
+                            <Button
+                              key={pageNum}
+                              variant={currentPage === pageNum ? 'default' : 'outline'}
+                              size="sm"
+                              onClick={() => setCurrentPage(pageNum)}
+                              className="h-8 w-8 p-0 text-xs"
+                            >
+                              {pageNum}
+                            </Button>
+                          );
+                        })}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                        className="h-8 w-8 p-0"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Add User Dialog */}
+        <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+          <DialogContent className="sm:max-w-[450px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <UserPlus className="h-5 w-5 text-primary" />
+                Tambah Pengguna Baru
+              </DialogTitle>
+              <DialogDescription>
+                Buat akun pengguna baru secara manual. Pengguna akan menerima email konfirmasi.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <label className="text-sm font-medium flex items-center gap-2">
+                  <User className="h-4 w-4 text-muted-foreground" /> Nama Lengkap <span className="text-destructive">*</span>
+                </label>
+                <Input
+                  placeholder="Contoh: Budi Santoso"
+                  value={newUser.fullName}
+                  onChange={(e) => setNewUser({ ...newUser, fullName: e.target.value })}
                 />
               </div>
+              <div className="grid gap-2">
+                <label className="text-sm font-medium flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-muted-foreground" /> Email <span className="text-destructive">*</span>
+                </label>
+                <Input
+                  type="email"
+                  placeholder="email@contoh.com"
+                  value={newUser.email}
+                  onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <label className="text-sm font-medium flex items-center gap-2">
+                  <Lock className="h-4 w-4 text-muted-foreground" /> Password <span className="text-destructive">*</span>
+                </label>
+                <Input
+                  type="password"
+                  placeholder="Minimal 6 karakter"
+                  value={newUser.password}
+                  onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <label className="text-sm font-medium flex items-center gap-2">
+                    <Phone className="h-4 w-4 text-muted-foreground" /> Telepon
+                  </label>
+                  <Input
+                    placeholder="08123456789"
+                    value={newUser.phone}
+                    onChange={(e) => setNewUser({ ...newUser, phone: e.target.value })}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-sm font-medium">Role Awal</label>
+                  <Select 
+                    value={newUser.role} 
+                    onValueChange={(value) => setNewUser({ ...newUser, role: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Pilih Role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {AVAILABLE_ROLES.map(role => (
+                        <SelectItem key={role.id} value={role.id}>{role.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setBlockDialogOpen(false)}>
-              Batal
-            </Button>
-            <Button variant="destructive" onClick={handleBlockUser} disabled={actionLoading}>
-              {actionLoading ? 'Memproses...' : 'Blokir Pengguna'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAddDialogOpen(false)} disabled={actionLoading}>
+                Batal
+              </Button>
+              <Button onClick={handleAddUser} disabled={actionLoading}>
+                {actionLoading ? (
+                  <>
+                    <div className="animate-spin mr-2 h-4 w-4 border-2 border-background border-t-transparent rounded-full" />
+                    Memproses...
+                  </>
+                ) : 'Simpan Pengguna'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Block Dialog */}
+        <Dialog open={blockDialogOpen} onOpenChange={setBlockDialogOpen}>
+          <DialogContent className="sm:max-w-[400px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-destructive">
+                <XCircle className="h-5 w-5" />
+                Blokir Pengguna
+              </DialogTitle>
+              <DialogDescription>
+                Tindakan ini akan mencabut akses pengguna ke aplikasi. Anda dapat membuka blokir nanti.
+              </DialogDescription>
+            </DialogHeader>
+            {selectedUser && (
+              <div className="space-y-4 py-2">
+                <div className="flex items-center gap-3 p-3 bg-muted rounded-lg border">
+                  <Avatar className="h-10 w-10 border">
+                    <AvatarImage src={selectedUser.avatarUrl || undefined} />
+                    <AvatarFallback>{selectedUser.fullName.charAt(0)}</AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <p className="font-semibold text-sm">{selectedUser.fullName}</p>
+                    <p className="text-xs text-muted-foreground">{selectedUser.phone || 'No phone'}</p>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 text-muted-foreground" /> Alasan Blokir <span className="text-destructive">*</span>
+                  </label>
+                  <Textarea
+                    value={blockReason}
+                    onChange={(e) => setBlockReason(e.target.value)}
+                    placeholder="Contoh: Pelanggaran ketentuan layanan, aktivitas mencurigakan..."
+                    rows={3}
+                    className="resize-none"
+                  />
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setBlockDialogOpen(false)} disabled={actionLoading}>
+                Batal
+              </Button>
+              <Button variant="destructive" onClick={handleBlockUser} disabled={actionLoading}>
+                {actionLoading ? (
+                  <>
+                    <div className="animate-spin mr-2 h-4 w-4 border-2 border-background border-t-transparent rounded-full" />
+                    Memproses...
+                  </>
+                ) : 'Konfirmasi Blokir'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
     </AdminLayout>
   );
 }
