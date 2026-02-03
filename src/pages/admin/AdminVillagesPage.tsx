@@ -30,8 +30,9 @@ import { VillageEditDialog } from '@/components/admin/VillageEditDialog';
 interface VillageRow {
   id: string;
   name: string;
-  district: string;
+  province: string;
   regency: string;
+  district: string;
   subdistrict: string | null;
   description: string | null;
   contact_name: string | null;
@@ -58,7 +59,7 @@ export default function AdminVillagesPage() {
       setLoading(true);
       const { data, error } = await supabase
         .from('villages')
-        .select('id, name, district, regency, subdistrict, description, contact_name, contact_phone, contact_email, registration_status, is_active, registered_at')
+        .select('id, name, province, regency, district, subdistrict, description, contact_name, contact_phone, contact_email, registration_status, is_active, registered_at')
         .order('registered_at', { ascending: false });
 
       if (error) throw error;
@@ -140,8 +141,8 @@ export default function AdminVillagesPage() {
       header: 'Lokasi',
       render: (item: VillageRow) => (
         <div className="text-sm">
-          <p>{item.district}</p>
-          <p className="text-xs text-muted-foreground">{item.regency}</p>
+          <p>{item.province}</p>
+          <p className="text-xs text-muted-foreground">{item.regency}, {item.district}</p>
         </div>
       ),
     },
@@ -269,8 +270,9 @@ export default function AdminVillagesPage() {
           villageId={selectedVillage.id}
           initialData={{
             name: selectedVillage.name,
-            district: selectedVillage.district,
+            province: selectedVillage.province,
             regency: selectedVillage.regency,
+            district: selectedVillage.district,
             subdistrict: selectedVillage.subdistrict,
             description: selectedVillage.description,
             contact_name: selectedVillage.contact_name,

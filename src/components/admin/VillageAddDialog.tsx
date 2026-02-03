@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Save } from 'lucide-react';
 import {
   Dialog,
@@ -12,8 +12,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { 
+  fetchProvinces, fetchRegencies, fetchDistricts, fetchVillages,
+  type Region 
+} from '@/lib/addressApi';
 
 interface VillageAddDialogProps {
   open: boolean;
@@ -27,10 +32,13 @@ export function VillageAddDialog({
   onSuccess,
 }: VillageAddDialogProps) {
   const [loading, setLoading] = useState(false);
+  const [loadingRegions, setLoadingRegions] = useState(false);
+  
   const [formData, setFormData] = useState({
     name: '',
-    district: '',
+    province: '',
     regency: '',
+    district: '',
     subdistrict: '',
     description: '',
     contact_name: '',
@@ -39,21 +47,179 @@ export function VillageAddDialog({
     is_active: true,
   });
 
+  // Region lists
+  const [provincesList, setProvincesList] = useState<Region[]>([]);
+  const [regenciesList, setRegenciesList] = useState<Region[]>([]);
+  const [districtsList, setDistrictsList] = useState<Region[]>([]);
+  const [subdistrictsList, setSubdistrictsList] = useState<Region[]>([]);
+
+  // Load provinces on dialog open
+  useEffect(() => {
+    if (open) {
+      loadProvinces();
+    } else {
+      // Reset form when dialog closes
+      setFormData({
+        name: '',
+        province: '',
+        regency: '',
+        district: '',
+        subdistrict: '',
+        description: '',
+        contact_name: '',
+        contact_phone: '',
+        contact_email: '',
+        is_active: true,
+      });
+      setRegenciesList([]);
+      setDistrictsList([]);
+      setSubdistrictsList([]);
+    }
+  }, [open]);
+
+  // Load regencies when province changes
+  useEffect(() => {
+    if (formData.province) {
+      loadRegencies(formData.province);
+    } else {
+      setRegenciesList([]);
+      setDistrictsList([]);
+      setSubdistrictsList([]);
+      setFormData(prev => ({
+        ...prev,
+        regency: '',
+        district: '',
+        subdistrict: '',
+      }));
+    }
+  }, [formData.province]);
+
+  // Load districts when regency changes
+  useEffect(() => {
+    if (formData.regency) {
+      loadDistricts(formData.regency);
+    } else {
+      setDistrictsList([]);
+      setSubdistrictsList([]);
+      setFormData(prev => ({
+        ...prev,
+        district: '',
+        subdistrict: '',
+      }));
+    }
+  }, [formData.regency]);
+
+  // Load subdistricts when district changes
+  useEffect(() => {
+    if (formData.district) {
+      loadSubdistricts(formData.district);
+    } else {
+      setSubdistrictsList([]);
+      setFormData(prev => ({
+        ...prev,
+        subdistrict: '',
+      }));
+    }
+  }, [formData.district]);
+
+  const loadProvinces = async () => {
+    try {
+      setLoadingRegions(true);
+      const data = await fetchProvinces();
+      setProvincesList(data);
+    } catch (error) {
+      console.error('Error loading provinces:', error);
+      toast.error('Gagal memuat data provinsi');
+    } finally {
+      setLoadingRegions(false);
+    }
+  };
+
+  const loadRegencies = async (provinceCode: string) => {
+    try {
+      setLoadingRegions(true);
+      const data = await fetchRegencies(provinceCode);
+      setRegenciesList(data);
+    } catch (error) {
+      console.error('Error loading regencies:', error);
+      toast.error('Gagal memuat data kabupaten/kota');
+    } finally {
+      setLoadingRegions(false);
+    }
+  };
+
+  const loadDistricts = async (regencyCode: string) => {
+    try {
+      setLoadingRegions(true);
+      const data = await fetchDistricts(regencyCode);
+      setDistrictsList(data);
+    } catch (error) {
+      console.error('Error loading districts:', error);
+      toast.error('Gagal memuat data kecamatan');
+    } finally {
+      setLoadingRegions(false);
+    }
+  };
+
+  const loadSubdistricts = async (districtCode: string) => {
+    try {
+      setLoadingRegions(true);
+      const data = await fetchVillages(districtCode);
+      setSubdistrictsList(data);
+    } catch (error) {
+      console.error('Error loading subdistricts:', error);
+      toast.error('Gagal memuat data kelurahan/desa');
+    } finally {
+      setLoadingRegions(false);
+    }
+  };
+
+  const getRegionName = (code: string, list: Region[]): string => {
+    return list.find(r => r.code === code)?.name || '';
+  };
+
   const handleSubmit = async () => {
     if (!formData.name.trim()) {
       toast.error('Nama desa wajib diisi');
       return;
     }
 
+    if (!formData.province) {
+      toast.error('Provinsi wajib dipilih');
+      return;
+    }
+
+    if (!formData.regency) {
+      toast.error('Kabupaten/Kota wajib dipilih');
+      return;
+    }
+
+    if (!formData.district) {
+      toast.error('Kecamatan wajib dipilih');
+      return;
+    }
+
+    if (!formData.subdistrict) {
+      toast.error('Kelurahan/Desa wajib dipilih');
+      return;
+    }
+
     setLoading(true);
     try {
+      // Get full names from selected codes
+      const provinceName = getRegionName(formData.province, provincesList);
+      const regencyName = getRegionName(formData.regency, regenciesList);
+      const districtName = getRegionName(formData.district, districtsList);
+      const subdistrictName = getRegionName(formData.subdistrict, subdistrictsList);
+
       const { error } = await supabase
         .from('villages')
         .insert({
-          name: formData.name,
-          district: formData.district,
-          regency: formData.regency,
-          subdistrict: formData.subdistrict || null,
+          name: formData.name.trim(),
+          province: provinceName,
+          regency: regencyName,
+          district: districtName,
+          subdistrict: subdistrictName,
           description: formData.description || null,
           contact_name: formData.contact_name || null,
           contact_phone: formData.contact_phone || null,
@@ -68,8 +234,9 @@ export function VillageAddDialog({
       toast.success('Desa wisata berhasil ditambahkan');
       setFormData({
         name: '',
-        district: '',
+        province: '',
         regency: '',
+        district: '',
         subdistrict: '',
         description: '',
         contact_name: '',
@@ -104,32 +271,93 @@ export function VillageAddDialog({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Kecamatan</Label>
-              <Input
-                value={formData.district}
-                onChange={(e) => setFormData({ ...formData, district: e.target.value })}
-                placeholder="Nama kecamatan"
-              />
-            </div>
-            <div>
-              <Label>Kabupaten/Kota</Label>
-              <Input
-                value={formData.regency}
-                onChange={(e) => setFormData({ ...formData, regency: e.target.value })}
-                placeholder="Nama kabupaten/kota"
-              />
-            </div>
-          </div>
+          <div className="border-t pt-4">
+            <p className="text-sm font-medium mb-3">Alamat Lengkap</p>
+            <div className="space-y-3">
+              {/* Provinsi */}
+              <div>
+                <Label>Provinsi *</Label>
+                <Select 
+                  value={formData.province} 
+                  onValueChange={(value) => setFormData({ ...formData, province: value })}
+                  disabled={loadingRegions}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pilih provinsi" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {provincesList.map((province) => (
+                      <SelectItem key={province.code} value={province.code}>
+                        {province.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-          <div>
-            <Label>Kelurahan/Desa</Label>
-            <Input
-              value={formData.subdistrict}
-              onChange={(e) => setFormData({ ...formData, subdistrict: e.target.value })}
-              placeholder="Nama kelurahan/desa"
-            />
+              {/* Kabupaten/Kota */}
+              <div>
+                <Label>Kabupaten/Kota *</Label>
+                <Select 
+                  value={formData.regency} 
+                  onValueChange={(value) => setFormData({ ...formData, regency: value })}
+                  disabled={!formData.province || loadingRegions}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={formData.province ? "Pilih kabupaten/kota" : "Pilih provinsi dulu"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {regenciesList.map((regency) => (
+                      <SelectItem key={regency.code} value={regency.code}>
+                        {regency.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Kecamatan */}
+              <div>
+                <Label>Kecamatan *</Label>
+                <Select 
+                  value={formData.district} 
+                  onValueChange={(value) => setFormData({ ...formData, district: value })}
+                  disabled={!formData.regency || loadingRegions}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={formData.regency ? "Pilih kecamatan" : "Pilih kabupaten/kota dulu"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {districtsList.map((district) => (
+                      <SelectItem key={district.code} value={district.code}>
+                        {district.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Kelurahan/Desa */}
+              <div>
+                <Label>Kelurahan/Desa *</Label>
+                <Select 
+                  value={formData.subdistrict} 
+                  onValueChange={(value) => setFormData({ ...formData, subdistrict: value })}
+                  disabled={!formData.district || loadingRegions}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={formData.district ? "Pilih kelurahan/desa" : "Pilih kecamatan dulu"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {subdistrictsList.map((subdistrict) => (
+                      <SelectItem key={subdistrict.code} value={subdistrict.code}>
+                        {subdistrict.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </div>
 
           <div>
@@ -188,7 +416,7 @@ export function VillageAddDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Batal
           </Button>
-          <Button onClick={handleSubmit} disabled={loading}>
+          <Button onClick={handleSubmit} disabled={loading || loadingRegions}>
             <Save className="h-4 w-4 mr-2" />
             {loading ? 'Menyimpan...' : 'Tambah'}
           </Button>
