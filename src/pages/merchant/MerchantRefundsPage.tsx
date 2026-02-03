@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { RotateCcw, Eye, Filter, Clock, Search } from 'lucide-react';
-import { MerchantDashboardLayout } from '@/components/merchant/MerchantDashboardLayout';
+import { MerchantLayout } from '@/components/merchant/MerchantLayout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -133,17 +133,10 @@ export default function MerchantRefundsPage() {
   };
 
   return (
-    <MerchantDashboardLayout>
-      <div className="p-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-          <div>
-            <h1 className="text-2xl font-bold">Manajemen Refund</h1>
-            <p className="text-muted-foreground text-sm">Pantau permintaan pengembalian dana dari pembeli</p>
-          </div>
-        </div>
-
+    <MerchantLayout title="Manajemen Refund" subtitle="Pantau permintaan pengembalian dana dari pembeli">
+      <div className="space-y-6">
         {/* Filter & Search */}
-        <div className="flex flex-col md:flex-row items-center gap-4 mb-6">
+        <div className="flex flex-col md:flex-row items-center gap-4">
           <div className="relative flex-1 w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -291,6 +284,6 @@ export default function MerchantRefundsPage() {
           </DialogContent>
         </Dialog>
       </div>
-    </MerchantDashboardLayout>
+    </MerchantLayout>
   );
 }
