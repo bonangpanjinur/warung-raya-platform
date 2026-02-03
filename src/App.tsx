@@ -66,8 +66,6 @@ import AdminVerifikatorCommissionsPage from "./pages/admin/AdminVerifikatorCommi
 import AdminFinancePage from "./pages/admin/AdminFinancePage";
 import AdminBannersPage from "./pages/admin/AdminBannersPage";
 import AdminBroadcastPage from "./pages/admin/AdminBroadcastPage";
-import AdminPWASettingsPage from "./pages/admin/AdminPWASettingsPage";
-import AdminWhitelabelPage from "./pages/admin/AdminWhitelabelPage";
 import AdminRolesPage from "./pages/admin/AdminRolesPage";
 import AdminBackupPage from "./pages/admin/AdminBackupPage";
 import AdminScheduledBackupPage from "./pages/admin/AdminScheduledBackupPage";
@@ -318,16 +316,7 @@ const App = () => (
                   <AdminBroadcastPage />
                 </ProtectedRoute>
               } />
-              <Route path="/admin/pwa" element={
-                <ProtectedRoute allowedRoles={['admin']}>
-                  <AdminPWASettingsPage />
-                </ProtectedRoute>
-              } />
-              <Route path="/admin/whitelabel" element={
-                <ProtectedRoute allowedRoles={['admin']}>
-                  <AdminWhitelabelPage />
-                </ProtectedRoute>
-              } />
+
               <Route path="/admin/roles" element={
                 <ProtectedRoute allowedRoles={['admin']}>
                   <AdminRolesPage />

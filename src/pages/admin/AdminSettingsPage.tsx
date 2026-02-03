@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Save, ToggleLeft, Globe, CreditCard, AlertCircle, Truck, Percent, Plus, Trash2, ShieldCheck } from 'lucide-react';
+import { Save, ToggleLeft, Globe, CreditCard, AlertCircle, Truck, Percent, Plus, Trash2, ShieldCheck, Palette } from 'lucide-react';
 import { AdminSidebar } from '@/components/admin/AdminSidebar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { fetchAppSettings, updateAppSetting } from '@/lib/adminApi';
 import { clearCODSettingsCache } from '@/lib/codSecurity';
+import { BrandingAppearanceSettings } from '@/components/admin/BrandingAppearanceSettings';
 import type { 
   AppSetting, 
   RegistrationSettings, 
@@ -110,6 +112,21 @@ export default function AdminSettingsPage() {
             </div>
           ) : (
             <div className="space-y-6">
+              {/* Branding & Appearance Tab */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Palette className="h-5 w-5" />
+                    Branding & Tampilan
+                  </CardTitle>
+                  <CardDescription>
+                    Kelola identitas brand, warna tema, dan pengaturan PWA aplikasi Anda
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <BrandingAppearanceSettings isSaving={saving} />
+                </CardContent>
+              </Card>
               {/* Registration Settings */}
               <Card>
                 <CardHeader>

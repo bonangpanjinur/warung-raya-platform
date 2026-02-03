@@ -20,7 +20,6 @@ import {
   Image,
   Bell,
   Smartphone,
-  Palette,
   Shield,
   Database,
   Globe,
@@ -76,8 +75,6 @@ export function AdminSidebar({ pendingMerchants = 0, pendingVillages = 0, pendin
     { label: 'Backup Terjadwal', href: '/admin/scheduled-backup', icon: <Clock className="h-4 w-4" /> },
     { label: 'SEO Settings', href: '/admin/seo', icon: <Globe className="h-4 w-4" /> },
     { label: 'System Logs', href: '/admin/logs', icon: <ScrollText className="h-4 w-4" /> },
-    { label: 'PWA Settings', href: '/admin/pwa', icon: <Smartphone className="h-4 w-4" /> },
-    { label: 'Whitelabel', href: '/admin/whitelabel', icon: <Palette className="h-4 w-4" /> },
     { label: 'Pengaturan', href: '/admin/settings', icon: <Settings className="h-4 w-4" /> },
   ];
 
