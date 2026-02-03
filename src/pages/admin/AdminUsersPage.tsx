@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Users, Search, Ban, CheckCircle, Eye, Filter, Download, MoreHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Users, Search, Ban, CheckCircle, Eye, Filter, Download, MoreHorizontal, ChevronLeft, ChevronRight, UserPlus, Mail, Lock, Phone, User } from 'lucide-react';
 import { AdminLayout } from '@/components/admin/AdminLayout';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -62,10 +62,20 @@ export default function AdminUsersPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [blockDialogOpen, setBlockDialogOpen] = useState(false);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [blockReason, setBlockReason] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 15;
+
+  // Add User Form State
+  const [newUser, setNewUser] = useState({
+    email: '',
+    password: '',
+    fullName: '',
+    phone: '',
+    role: 'buyer'
+  });
 
   const loadUsers = async () => {
     try {
@@ -119,6 +129,71 @@ export default function AdminUsersPage() {
   useEffect(() => {
     loadUsers();
   }, []);
+
+  const handleAddUser = async () => {
+    if (!newUser.email || !newUser.password || !newUser.fullName) {
+      toast.error('Email, password, dan nama lengkap harus diisi');
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      
+      // 1. Create user in Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: newUser.email,
+        password: newUser.password,
+        options: {
+          data: {
+            full_name: newUser.fullName,
+          }
+        }
+      });
+
+      if (authError) throw authError;
+      if (!authData.user) throw new Error('Gagal membuat user auth');
+
+      const userId = authData.user.id;
+
+      // 2. Profile is usually created by trigger, but let's ensure phone is updated
+      if (newUser.phone) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .update({ phone: newUser.phone })
+          .eq('user_id', userId);
+        
+        if (profileError) console.error('Error updating profile phone:', profileError);
+      }
+
+      // 3. Assign role
+      if (newUser.role !== 'buyer') {
+        const { error: roleError } = await supabase
+          .from('user_roles')
+          .insert({
+            user_id: userId,
+            role: newUser.role
+          });
+        
+        if (roleError) throw roleError;
+      }
+
+      await logAdminAction('CREATE_USER', 'user', userId, null, { 
+        email: newUser.email, 
+        fullName: newUser.fullName, 
+        role: newUser.role 
+      });
+
+      toast.success('Pengguna berhasil ditambahkan');
+      setAddDialogOpen(false);
+      setNewUser({ email: '', password: '', fullName: '', phone: '', role: 'buyer' });
+      loadUsers();
+    } catch (error: any) {
+      console.error('Error adding user:', error);
+      toast.error(error.message || 'Gagal menambahkan pengguna');
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   const handleBlockUser = async () => {
     if (!selectedUser || !blockReason.trim()) {
@@ -247,45 +322,61 @@ export default function AdminUsersPage() {
 
   return (
     <AdminLayout title="Manajemen Pengguna" subtitle="Kelola semua pengguna aplikasi">
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-6">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Cari nama, telepon, atau ID..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-10"
-          />
+      {/* Actions & Filters */}
+      <div className="flex flex-col gap-4 mb-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Users className="h-5 w-5 text-primary" />
+            <h2 className="text-lg font-semibold">Daftar Pengguna</h2>
+            <Badge variant="secondary">{users.length}</Badge>
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <Button onClick={() => setAddDialogOpen(true)} className="flex-1 sm:flex-none">
+              <UserPlus className="h-4 w-4 mr-2" />
+              Tambah Pengguna
+            </Button>
+            <Button variant="outline" onClick={exportToCSV} className="flex-1 sm:flex-none">
+              <Download className="h-4 w-4 mr-2" />
+              Export
+            </Button>
+          </div>
         </div>
-        <Select value={roleFilter} onValueChange={setRoleFilter}>
-          <SelectTrigger className="w-full sm:w-40">
-            <SelectValue placeholder="Semua Role" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Semua Role</SelectItem>
-            <SelectItem value="admin">Admin</SelectItem>
-            <SelectItem value="merchant">Merchant</SelectItem>
-            <SelectItem value="courier">Kurir</SelectItem>
-            <SelectItem value="verifikator">Verifikator</SelectItem>
-            <SelectItem value="admin_desa">Admin Desa</SelectItem>
-            <SelectItem value="buyer">Pembeli</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-full sm:w-40">
-            <SelectValue placeholder="Semua Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Semua Status</SelectItem>
-            <SelectItem value="active">Aktif</SelectItem>
-            <SelectItem value="blocked">Diblokir</SelectItem>
-          </SelectContent>
-        </Select>
-        <Button variant="outline" onClick={exportToCSV}>
-          <Download className="h-4 w-4 mr-2" />
-          Export CSV
-        </Button>
+
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Cari nama, telepon, atau ID..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <Select value={roleFilter} onValueChange={setRoleFilter}>
+            <SelectTrigger className="w-full sm:w-40">
+              <SelectValue placeholder="Semua Role" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Role</SelectItem>
+              <SelectItem value="admin">Admin</SelectItem>
+              <SelectItem value="merchant">Merchant</SelectItem>
+              <SelectItem value="courier">Kurir</SelectItem>
+              <SelectItem value="verifikator">Verifikator</SelectItem>
+              <SelectItem value="admin_desa">Admin Desa</SelectItem>
+              <SelectItem value="buyer">Pembeli</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-full sm:w-40">
+              <SelectValue placeholder="Semua Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Status</SelectItem>
+              <SelectItem value="active">Aktif</SelectItem>
+              <SelectItem value="blocked">Diblokir</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* Stats */}
@@ -431,6 +522,89 @@ export default function AdminUsersPage() {
           </div>
         </div>
       )}
+
+      {/* Add User Dialog */}
+      <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Tambah Pengguna Baru</DialogTitle>
+            <DialogDescription>
+              Buat akun pengguna baru secara manual. Pengguna akan menerima email konfirmasi.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <User className="h-4 w-4" /> Nama Lengkap *
+              </label>
+              <Input
+                placeholder="Contoh: Budi Santoso"
+                value={newUser.fullName}
+                onChange={(e) => setNewUser({ ...newUser, fullName: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <Mail className="h-4 w-4" /> Email *
+              </label>
+              <Input
+                type="email"
+                placeholder="email@contoh.com"
+                value={newUser.email}
+                onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <Lock className="h-4 w-4" /> Password *
+              </label>
+              <Input
+                type="password"
+                placeholder="Minimal 6 karakter"
+                value={newUser.password}
+                onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <Phone className="h-4 w-4" /> Nomor Telepon
+              </label>
+              <Input
+                placeholder="08123456789"
+                value={newUser.phone}
+                onChange={(e) => setNewUser({ ...newUser, phone: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <label className="text-sm font-medium">Role Pengguna</label>
+              <Select 
+                value={newUser.role} 
+                onValueChange={(value) => setNewUser({ ...newUser, role: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih Role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="buyer">Pembeli (Buyer)</SelectItem>
+                  <SelectItem value="merchant">Merchant</SelectItem>
+                  <SelectItem value="courier">Kurir</SelectItem>
+                  <SelectItem value="verifikator">Verifikator</SelectItem>
+                  <SelectItem value="admin_desa">Admin Desa</SelectItem>
+                  <SelectItem value="admin">Administrator</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
+              Batal
+            </Button>
+            <Button onClick={handleAddUser} disabled={actionLoading}>
+              {actionLoading ? 'Memproses...' : 'Simpan Pengguna'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Block Dialog */}
       <Dialog open={blockDialogOpen} onOpenChange={setBlockDialogOpen}>
