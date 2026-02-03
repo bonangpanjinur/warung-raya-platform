@@ -90,7 +90,6 @@ export async function fetchProducts(): Promise<Product[]> {
         )
       )
     `);
-    // .eq('is_active', true);
 
   console.log('Products raw data result:', data);
   if (error) {
@@ -235,7 +234,6 @@ export async function fetchVillages(): Promise<Village[]> {
   const { data, error } = await supabase
     .from('villages')
     .select('*');
-    // .eq('is_active', true);
 
   console.log('Villages raw data result:', data);
   if (error) {
@@ -270,7 +268,6 @@ export async function fetchTourism(): Promise<Tourism[]> {
         name
       )
     `);
-    // .eq('is_active', true);
 
   console.log('Tourism raw data result:', data);
   if (error) {

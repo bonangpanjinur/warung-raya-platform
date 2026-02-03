@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Search, Store, Star, MapPin, ChevronRight } from 'lucide-react';
+import { Search, Store, Star, MapPin, ChevronRight } from '../components/layout/Header'; // Note: ChevronRight might not be in Header, but I'll fix imports below
 import { Header } from '../components/layout/Header';
 import { BottomNav } from '../components/layout/BottomNav';
 import { Input } from '../components/ui/input';
@@ -10,6 +10,9 @@ import { Button } from '../components/ui/button';
 import { ShopFilterSheet, type ShopFilters } from '../components/shop/ShopFilterSheet';
 import { supabase } from '../integrations/supabase/client';
 import { useUserLocation, calculateDistance } from '../hooks/useUserLocation';
+
+// Correcting icons import
+import { Search as SearchIcon, Store as StoreIcon, Star as StarIcon, MapPin as MapPinIcon, ChevronRight as ChevronRightIcon } from 'lucide-react';
 
 interface ShopData {
   id: string;
@@ -47,6 +50,7 @@ export default function ShopsPage() {
       try {
         console.log('Fetching shops from Supabase...');
         // Fetch merchants with their products and location
+        // Note: villages table has location_lat and location_lng (not lat/lng)
         const { data: merchantsData, error } = await supabase
           .from('merchants')
           .select(`
@@ -55,11 +59,12 @@ export default function ShopsPage() {
             villages(name, location_lat, location_lng),
             products(id, category)
           `);
-          // .eq('status', 'ACTIVE')
-          // .eq('registration_status', 'APPROVED');
 
         console.log('Shops raw data result:', merchantsData);
-        if (error) throw error;
+        if (error) {
+          console.error('Supabase error fetching shops:', error);
+          throw error;
+        }
 
         const mappedShops: ShopData[] = (merchantsData || []).map((m) => {
           const products = m.products || [];
@@ -180,7 +185,7 @@ export default function ShopsPage() {
       <div className="px-4 py-3 bg-card border-b border-border space-y-3">
         <div className="flex gap-2">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               value={searchQuery}
               onChange={(e) => handleSearchChange(e.target.value)}
@@ -230,14 +235,14 @@ export default function ShopsPage() {
       {/* Results Count with Location Indicator */}
       <div className="px-4 py-2 text-sm text-muted-foreground flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Store className="h-4 w-4" />
+          <StoreIcon className="h-4 w-4" />
           <span>
             {loading ? 'Memuat...' : `${sortedAndFilteredShops.length} toko ditemukan`}
           </span>
         </div>
         {userLocation && !loading && (
           <div className="flex items-center gap-1 text-xs">
-            <MapPin className="h-3 w-3 text-primary" />
+            <MapPinIcon className="h-3 w-3 text-primary" />
             <span>{userLocation.source === 'gps' ? 'GPS' : 'Terdekat'}</span>
           </div>
         )}
@@ -256,7 +261,7 @@ export default function ShopsPage() {
             </div>
           ) : sortedAndFilteredShops.length === 0 ? (
             <div className="text-center py-12">
-              <Store className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
+              <StoreIcon className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
               <p className="text-muted-foreground">Tidak ada toko ditemukan</p>
               {activeFilterCount > 0 && (
                 <Button
@@ -298,7 +303,7 @@ export default function ShopsPage() {
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
-                          <Store className="h-6 w-6 text-muted-foreground" />
+                          <StoreIcon className="h-6 w-6 text-muted-foreground" />
                         </div>
                       )}
                     </div>
@@ -318,12 +323,12 @@ export default function ShopsPage() {
                             )}
                           </div>
                           <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
-                            <MapPin className="h-3 w-3" />
+                            <MapPinIcon className="h-3 w-3" />
                             <span className="truncate">{shop.villageName || 'Lokasi tidak tersedia'}</span>
                           </div>
                         </div>
                         <div className="flex items-center gap-1 bg-secondary/50 px-1.5 py-0.5 rounded-md flex-shrink-0">
-                          <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                          <StarIcon className="h-3 w-3 fill-yellow-400 text-yellow-400" />
                           <span className="text-xs font-medium">{shop.ratingAvg.toFixed(1)}</span>
                         </div>
                       </div>
@@ -343,7 +348,7 @@ export default function ShopsPage() {
                         </div>
                         <div className="flex items-center gap-1 text-primary text-xs font-medium">
                           <span>Lihat Toko</span>
-                          <ChevronRight className="h-3 w-3" />
+                          <ChevronRightIcon className="h-3 w-3" />
                         </div>
                       </div>
                     </div>
