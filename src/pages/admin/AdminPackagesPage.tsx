@@ -28,7 +28,7 @@ import { formatPrice } from '@/lib/utils';
 interface TransactionPackage {
   id: string;
   name: string;
-  price_per_transaction: number;
+  total_price: number;
   kas_fee: number;
   transaction_quota: number;
   validity_days: number;
@@ -43,10 +43,10 @@ export default function AdminPackagesPage() {
   const [editingPackage, setEditingPackage] = useState<TransactionPackage | null>(null);
   const [formData, setFormData] = useState({
     name: '',
-    price_per_transaction: 500,
-    kas_fee: 100,
+    total_price: 25000,
+    kas_fee: 10,
     transaction_quota: 50,
-    validity_days: 0,
+    validity_days: 30,
     description: '',
     is_active: true,
   });
@@ -122,7 +122,7 @@ export default function AdminPackagesPage() {
     setEditingPackage(pkg);
     setFormData({
       name: pkg.name,
-      price_per_transaction: pkg.price_per_transaction,
+      total_price: pkg.total_price,
       kas_fee: pkg.kas_fee,
       transaction_quota: pkg.transaction_quota,
       validity_days: pkg.validity_days,
@@ -136,10 +136,10 @@ export default function AdminPackagesPage() {
     setEditingPackage(null);
     setFormData({
       name: '',
-      price_per_transaction: 500,
-      kas_fee: 100,
+      total_price: 25000,
+      kas_fee: 10,
       transaction_quota: 50,
-      validity_days: 0,
+      validity_days: 30,
       description: '',
       is_active: true,
     });
@@ -186,12 +186,12 @@ export default function AdminPackagesPage() {
               <CardContent>
                 <div className="grid grid-cols-2 gap-3 text-sm mb-4">
                   <div>
-                    <p className="text-muted-foreground">Biaya/Transaksi</p>
-                    <p className="font-medium">{formatPrice(pkg.price_per_transaction)}</p>
+                    <p className="text-muted-foreground">Harga Paket</p>
+                    <p className="font-medium">{formatPrice(pkg.total_price)}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Komisi Kelompok</p>
-                    <p className="font-medium">{formatPrice(pkg.kas_fee)}</p>
+                    <p className="font-medium">{pkg.kas_fee}%</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Kuota</p>
@@ -241,17 +241,18 @@ export default function AdminPackagesPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Biaya per Transaksi (Rp)</Label>
+                <Label>Harga Paket (Rp)</Label>
                 <Input
                   type="number"
-                  value={formData.price_per_transaction}
-                  onChange={(e) => setFormData({ ...formData, price_per_transaction: Number(e.target.value) })}
+                  value={formData.total_price}
+                  onChange={(e) => setFormData({ ...formData, total_price: Number(e.target.value) })}
                 />
               </div>
               <div>
-                <Label>Komisi Kelompok (Rp)</Label>
+                <Label>Komisi Kelompok (%)</Label>
                 <Input
                   type="number"
+                  step="0.01"
                   value={formData.kas_fee}
                   onChange={(e) => setFormData({ ...formData, kas_fee: Number(e.target.value) })}
                 />

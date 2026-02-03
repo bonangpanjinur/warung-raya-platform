@@ -34,15 +34,16 @@ interface Subscription {
   payment_amount: number;
   package: {
     name: string;
-    price_per_transaction: number;
+    total_price: number;
     validity_days: number;
+    kas_fee: number;
   };
 }
 
 interface TransactionPackage {
   id: string;
   name: string;
-  price_per_transaction: number;
+  total_price: number;
   kas_fee: number;
   transaction_quota: number;
   validity_days: number;
@@ -84,7 +85,7 @@ export default function MerchantSubscriptionPage() {
           .from('merchant_subscriptions')
           .select(`
             *,
-            package:transaction_packages(name, price_per_transaction, validity_days)
+            package:transaction_packages(name, total_price, validity_days, kas_fee)
           `)
           .eq('merchant_id', merchantData.id)
           .eq('status', 'ACTIVE')
@@ -110,7 +111,7 @@ export default function MerchantSubscriptionPage() {
           .from('merchant_subscriptions')
           .select(`
             *,
-            package:transaction_packages(name, price_per_transaction, validity_days)
+            package:transaction_packages(name, total_price, validity_days, kas_fee)
           `)
           .eq('merchant_id', merchantData.id)
           .order('created_at', { ascending: false })
@@ -128,7 +129,7 @@ export default function MerchantSubscriptionPage() {
           .from('transaction_packages')
           .select('*')
           .eq('is_active', true)
-          .order('price_per_transaction', { ascending: false });
+          .order('total_price', { ascending: true });
           
         setAvailablePackages(packagesData || []);
       } catch (error) {
@@ -142,10 +143,6 @@ export default function MerchantSubscriptionPage() {
     fetchData();
   }, [user]);
 
-  const calculatePackagePrice = (pkg: TransactionPackage) => {
-    return pkg.price_per_transaction * pkg.transaction_quota;
-  };
-
   const handleBuyPackage = async () => {
     if (!selectedPackage || !merchant) return;
 
@@ -157,14 +154,10 @@ export default function MerchantSubscriptionPage() {
         date.setDate(date.getDate() + selectedPackage.validity_days);
         expiredAt = date.toISOString();
       } else {
-        // For lifetime packages, set a far future date or just use a placeholder
-        // Our SQL logic handles validity_days = 0 specifically
         const date = new Date();
         date.setFullYear(date.getFullYear() + 100);
         expiredAt = date.toISOString();
       }
-
-      const paymentAmount = calculatePackagePrice(selectedPackage);
 
       const { error } = await supabase.from('merchant_subscriptions').insert({
         merchant_id: merchant.id,
@@ -173,8 +166,8 @@ export default function MerchantSubscriptionPage() {
         used_quota: 0,
         expired_at: expiredAt,
         status: 'ACTIVE',
-        payment_status: 'PAID', // Set to PAID for demo/simplicity or PENDING if payment gateway is integrated
-        payment_amount: paymentAmount,
+        payment_status: 'PAID',
+        payment_amount: selectedPackage.total_price,
       });
 
       if (error) throw error;
@@ -277,9 +270,9 @@ export default function MerchantSubscriptionPage() {
                   <p className="text-xs text-muted-foreground">transaksi</p>
                 </div>
                 <div className="p-3 bg-background rounded-lg">
-                  <p className="text-muted-foreground">Biaya/Transaksi</p>
+                  <p className="text-muted-foreground">Komisi Kelompok</p>
                   <p className="font-bold text-xl">
-                    {formatPrice(currentSubscription.package.price_per_transaction)}
+                    {currentSubscription.package.kas_fee}%
                   </p>
                 </div>
               </div>
@@ -328,14 +321,14 @@ export default function MerchantSubscriptionPage() {
                     <span className="font-medium">{pkg.validity_days === 0 ? 'Selamanya' : `${pkg.validity_days} hari`}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Biaya per Transaksi</span>
-                    <span className="font-medium">{formatPrice(pkg.price_per_transaction)}</span>
+                    <span className="text-muted-foreground">Komisi Kelompok</span>
+                    <span className="font-medium">{pkg.kas_fee}%</span>
                   </div>
                   <div className="border-t pt-3">
                     <div className="flex justify-between">
-                      <span className="font-medium">Total</span>
+                      <span className="font-medium">Harga Paket</span>
                       <span className="font-bold text-primary">
-                        {formatPrice(calculatePackagePrice(pkg))}
+                        {formatPrice(pkg.total_price)}
                       </span>
                     </div>
                   </div>
@@ -411,13 +404,13 @@ export default function MerchantSubscriptionPage() {
                     <span>{selectedPackage.validity_days === 0 ? 'Selamanya' : `${selectedPackage.validity_days} hari`}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Biaya Transaksi</span>
-                    <span>{formatPrice(calculatePackagePrice(selectedPackage))}</span>
+                    <span>Komisi Kelompok</span>
+                    <span>{selectedPackage.kas_fee}%</span>
                   </div>
                   <div className="border-t pt-2 font-semibold flex justify-between">
                     <span>Total Bayar</span>
                     <span className="text-primary">
-                      {formatPrice(calculatePackagePrice(selectedPackage))}
+                      {formatPrice(selectedPackage.total_price)}
                     </span>
                   </div>
                 </div>
