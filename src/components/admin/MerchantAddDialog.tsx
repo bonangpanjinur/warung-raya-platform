@@ -21,6 +21,13 @@ import {
 } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import {
+  fetchProvinces,
+  fetchRegencies,
+  fetchDistricts,
+  fetchVillages,
+  Region,
+} from '@/lib/addressApi';
 
 interface MerchantAddDialogProps {
   open: boolean;
@@ -28,7 +35,7 @@ interface MerchantAddDialogProps {
   onSuccess: () => void;
 }
 
-interface Village {
+interface VillageData {
   id: string;
   name: string;
   district: string;
@@ -52,62 +59,37 @@ const CLASSIFICATION_PRICES = [
   { value: 'ABOVE_20K', label: 'Diatas Rp 20.000' },
 ];
 
-// Indonesian provinces
-const PROVINCES = [
-  { value: 'Aceh', label: 'Aceh' },
-  { value: 'Sumatera Utara', label: 'Sumatera Utara' },
-  { value: 'Sumatera Barat', label: 'Sumatera Barat' },
-  { value: 'Riau', label: 'Riau' },
-  { value: 'Jambi', label: 'Jambi' },
-  { value: 'Sumatera Selatan', label: 'Sumatera Selatan' },
-  { value: 'Bengkulu', label: 'Bengkulu' },
-  { value: 'Lampung', label: 'Lampung' },
-  { value: 'Kepulauan Bangka Belitung', label: 'Kepulauan Bangka Belitung' },
-  { value: 'Kepulauan Riau', label: 'Kepulauan Riau' },
-  { value: 'DKI Jakarta', label: 'DKI Jakarta' },
-  { value: 'Jawa Barat', label: 'Jawa Barat' },
-  { value: 'Jawa Tengah', label: 'Jawa Tengah' },
-  { value: 'DI Yogyakarta', label: 'DI Yogyakarta' },
-  { value: 'Jawa Timur', label: 'Jawa Timur' },
-  { value: 'Banten', label: 'Banten' },
-  { value: 'Bali', label: 'Bali' },
-  { value: 'Nusa Tenggara Barat', label: 'Nusa Tenggara Barat' },
-  { value: 'Nusa Tenggara Timur', label: 'Nusa Tenggara Timur' },
-  { value: 'Kalimantan Barat', label: 'Kalimantan Barat' },
-  { value: 'Kalimantan Tengah', label: 'Kalimantan Tengah' },
-  { value: 'Kalimantan Selatan', label: 'Kalimantan Selatan' },
-  { value: 'Kalimantan Timur', label: 'Kalimantan Timur' },
-  { value: 'Kalimantan Utara', label: 'Kalimantan Utara' },
-  { value: 'Sulawesi Utara', label: 'Sulawesi Utara' },
-  { value: 'Sulawesi Tengah', label: 'Sulawesi Tengah' },
-  { value: 'Sulawesi Selatan', label: 'Sulawesi Selatan' },
-  { value: 'Sulawesi Tenggara', label: 'Sulawesi Tenggara' },
-  { value: 'Gorontalo', label: 'Gorontalo' },
-  { value: 'Sulawesi Barat', label: 'Sulawesi Barat' },
-  { value: 'Maluku', label: 'Maluku' },
-  { value: 'Maluku Utara', label: 'Maluku Utara' },
-  { value: 'Papua', label: 'Papua' },
-  { value: 'Papua Barat', label: 'Papua Barat' },
-  { value: 'Papua Tengah', label: 'Papua Tengah' },
-  { value: 'Papua Pegunungan', label: 'Papua Pegunungan' },
-  { value: 'Papua Selatan', label: 'Papua Selatan' },
-];
-
 export function MerchantAddDialog({
   open,
   onOpenChange,
   onSuccess,
 }: MerchantAddDialogProps) {
   const [loading, setLoading] = useState(false);
-  const [villages, setVillages] = useState<Village[]>([]);
+  
+  // Address data states
+  const [provinces, setProvinces] = useState<Region[]>([]);
+  const [regencies, setRegencies] = useState<Region[]>([]);
+  const [districts, setDistricts] = useState<Region[]>([]);
+  const [apiVillages, setApiVillages] = useState<Region[]>([]);
+  const [dbVillages, setDbVillages] = useState<VillageData[]>([]);
+  
+  // Loading states
+  const [loadingProvinces, setLoadingProvinces] = useState(false);
+  const [loadingRegencies, setLoadingRegencies] = useState(false);
+  const [loadingDistricts, setLoadingDistricts] = useState(false);
   const [loadingVillages, setLoadingVillages] = useState(false);
+  
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
-    province: '',
-    city: '',
-    district: '',
-    subdistrict: '',
+    province_code: '',
+    province_name: '',
+    regency_code: '',
+    regency_name: '',
+    district_code: '',
+    district_name: '',
+    village_code: '',
+    village_name: '',
     address: '',
     open_time: '08:00',
     close_time: '17:00',
@@ -117,46 +99,149 @@ export function MerchantAddDialog({
     is_open: true,
     status: 'ACTIVE',
     registration_status: 'APPROVED',
-    village_id: '',
+    village_id: '', // Linked village ID if exists
   });
 
-  // Fetch villages on dialog open
+  // Load provinces on dialog open
   useEffect(() => {
     if (open) {
-      fetchVillages();
+      loadProvinces();
     }
   }, [open]);
 
-  const fetchVillages = async () => {
+  const loadProvinces = async () => {
+    setLoadingProvinces(true);
+    try {
+      const data = await fetchProvinces();
+      setProvinces(data);
+    } catch (error) {
+      console.error('Error loading provinces:', error);
+      toast.error('Gagal memuat data provinsi');
+    } finally {
+      setLoadingProvinces(false);
+    }
+  };
+
+  const handleProvinceChange = async (code: string) => {
+    const selected = provinces.find(p => p.code === code);
+    if (!selected) return;
+
+    setFormData({
+      ...formData,
+      province_code: code,
+      province_name: selected.name,
+      regency_code: '',
+      regency_name: '',
+      district_code: '',
+      district_name: '',
+      village_code: '',
+      village_name: '',
+      village_id: '',
+    });
+
+    setRegencies([]);
+    setDistricts([]);
+    setApiVillages([]);
+    setDbVillages([]);
+
+    setLoadingRegencies(true);
+    try {
+      const data = await fetchRegencies(code);
+      setRegencies(data);
+    } catch (error) {
+      console.error('Error loading regencies:', error);
+      toast.error('Gagal memuat data kabupaten/kota');
+    } finally {
+      setLoadingRegencies(false);
+    }
+  };
+
+  const handleRegencyChange = async (code: string) => {
+    const selected = regencies.find(r => r.code === code);
+    if (!selected) return;
+
+    setFormData({
+      ...formData,
+      regency_code: code,
+      regency_name: selected.name,
+      district_code: '',
+      district_name: '',
+      village_code: '',
+      village_name: '',
+      village_id: '',
+    });
+
+    setDistricts([]);
+    setApiVillages([]);
+    setDbVillages([]);
+
+    setLoadingDistricts(true);
+    try {
+      const data = await fetchDistricts(code);
+      setDistricts(data);
+    } catch (error) {
+      console.error('Error loading districts:', error);
+      toast.error('Gagal memuat data kecamatan');
+    } finally {
+      setLoadingDistricts(false);
+    }
+  };
+
+  const handleDistrictChange = async (code: string) => {
+    const selected = districts.find(d => d.code === code);
+    if (!selected) return;
+
+    setFormData({
+      ...formData,
+      district_code: code,
+      district_name: selected.name,
+      village_code: '',
+      village_name: '',
+      village_id: '',
+    });
+
+    setApiVillages([]);
+    setDbVillages([]);
+
     setLoadingVillages(true);
     try {
-      const { data, error } = await supabase
+      // Fetch API villages
+      const apiData = await fetchVillages(code);
+      setApiVillages(apiData);
+
+      // Fetch DB villages that match this location
+      const { data: dbData, error } = await supabase
         .from('villages')
         .select('id, name, district, regency, subdistrict')
-        .eq('is_active', true)
-        .order('name', { ascending: true });
+        .eq('district', selected.name)
+        .eq('regency', formData.regency_name)
+        .eq('is_active', true);
 
       if (error) throw error;
-      setVillages(data || []);
+      setDbVillages(dbData || []);
     } catch (error) {
-      console.error('Error fetching villages:', error);
-      toast.error('Gagal memuat daftar desa');
+      console.error('Error loading villages:', error);
+      toast.error('Gagal memuat data kelurahan');
     } finally {
       setLoadingVillages(false);
     }
   };
 
-  const handleVillageChange = (villageId: string) => {
-    const selectedVillage = villages.find(v => v.id === villageId);
-    if (selectedVillage) {
-      setFormData({
-        ...formData,
-        village_id: villageId,
-        city: selectedVillage.regency,
-        district: selectedVillage.district,
-        subdistrict: selectedVillage.subdistrict || '',
-      });
-    }
+  const handleVillageChange = (code: string) => {
+    const selected = apiVillages.find(v => v.code === code);
+    if (!selected) return;
+
+    // Try to find matching village in database
+    const matchingDbVillage = dbVillages.find(
+      v => v.name.toLowerCase() === selected.name.toLowerCase()
+    );
+
+    setFormData({
+      ...formData,
+      village_code: code,
+      village_name: selected.name,
+      village_id: matchingDbVillage?.id || '', // Link to village if exists
+    });
   };
 
   const handleSubmit = async () => {
@@ -171,22 +256,22 @@ export function MerchantAddDialog({
       return;
     }
 
-    if (!formData.province.trim()) {
-      toast.error('Provinsi wajib diisi');
+    if (!formData.province_code) {
+      toast.error('Provinsi wajib dipilih');
       return;
     }
 
-    if (!formData.city.trim()) {
-      toast.error('Kabupaten/Kota wajib diisi');
+    if (!formData.regency_code) {
+      toast.error('Kabupaten/Kota wajib dipilih');
       return;
     }
 
-    if (!formData.district.trim()) {
-      toast.error('Kecamatan wajib diisi');
+    if (!formData.district_code) {
+      toast.error('Kecamatan wajib dipilih');
       return;
     }
 
-    if (!formData.village_id) {
+    if (!formData.village_code) {
       toast.error('Kelurahan/Desa wajib dipilih');
       return;
     }
@@ -207,11 +292,11 @@ export function MerchantAddDialog({
           is_open: formData.is_open,
           status: formData.status,
           registration_status: formData.registration_status,
-          village_id: formData.village_id,
-          province: formData.province,
-          city: formData.city,
-          district: formData.district,
-          subdistrict: formData.subdistrict || null,
+          village_id: formData.village_id || null, // Null if not linked to a tourism village
+          province: formData.province_name,
+          city: formData.regency_name,
+          district: formData.district_name,
+          subdistrict: formData.village_name,
           registered_at: new Date().toISOString(),
           order_mode: 'ADMIN_ASSISTED',
         });
@@ -226,10 +311,14 @@ export function MerchantAddDialog({
       setFormData({
         name: '',
         phone: '',
-        province: '',
-        city: '',
-        district: '',
-        subdistrict: '',
+        province_code: '',
+        province_name: '',
+        regency_code: '',
+        regency_name: '',
+        district_code: '',
+        district_name: '',
+        village_code: '',
+        village_name: '',
         address: '',
         open_time: '08:00',
         close_time: '17:00',
@@ -285,70 +374,134 @@ export function MerchantAddDialog({
             </div>
           </div>
 
-          {/* Address Information */}
+          {/* Address Information - Cascading Dropdowns */}
           <div className="border-b pb-4">
             <h3 className="font-semibold text-sm mb-3">Alamat Lengkap</h3>
             
+            {/* Provinsi */}
             <div>
               <Label>Provinsi *</Label>
               <Select
-                value={formData.province}
-                onValueChange={(v) => setFormData({ ...formData, province: v })}
-                disabled={loading}
+                value={formData.province_code}
+                onValueChange={handleProvinceChange}
+                disabled={loading || loadingProvinces}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Pilih Provinsi" />
+                  <SelectValue placeholder={loadingProvinces ? 'Memuat...' : 'Pilih Provinsi'} />
                 </SelectTrigger>
                 <SelectContent>
-                  {PROVINCES.map((province) => (
-                    <SelectItem key={province.value} value={province.value}>
-                      {province.label}
+                  {provinces.map((province) => (
+                    <SelectItem key={province.code} value={province.code}>
+                      {province.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
+            {/* Kabupaten/Kota */}
             <div className="mt-3">
               <Label>Kabupaten/Kota *</Label>
-              <Input
-                value={formData.city}
-                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                placeholder="Kabupaten atau Kota"
-                disabled={loading}
-              />
+              <Select
+                value={formData.regency_code}
+                onValueChange={handleRegencyChange}
+                disabled={loading || loadingRegencies || !formData.province_code}
+              >
+                <SelectTrigger>
+                  <SelectValue 
+                    placeholder={
+                      !formData.province_code 
+                        ? 'Pilih Provinsi terlebih dahulu'
+                        : loadingRegencies 
+                        ? 'Memuat...' 
+                        : 'Pilih Kabupaten/Kota'
+                    } 
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {regencies.map((regency) => (
+                    <SelectItem key={regency.code} value={regency.code}>
+                      {regency.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
+            {/* Kecamatan */}
             <div className="mt-3">
               <Label>Kecamatan *</Label>
-              <Input
-                value={formData.district}
-                onChange={(e) => setFormData({ ...formData, district: e.target.value })}
-                placeholder="Kecamatan"
-                disabled={loading}
-              />
+              <Select
+                value={formData.district_code}
+                onValueChange={handleDistrictChange}
+                disabled={loading || loadingDistricts || !formData.regency_code}
+              >
+                <SelectTrigger>
+                  <SelectValue 
+                    placeholder={
+                      !formData.regency_code 
+                        ? 'Pilih Kabupaten/Kota terlebih dahulu'
+                        : loadingDistricts 
+                        ? 'Memuat...' 
+                        : 'Pilih Kecamatan'
+                    } 
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {districts.map((district) => (
+                    <SelectItem key={district.code} value={district.code}>
+                      {district.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
+            {/* Kelurahan/Desa */}
             <div className="mt-3">
               <Label>Kelurahan/Desa *</Label>
               <Select
-                value={formData.village_id}
+                value={formData.village_code}
                 onValueChange={handleVillageChange}
-                disabled={loading || loadingVillages}
+                disabled={loading || loadingVillages || !formData.district_code}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder={loadingVillages ? 'Memuat...' : 'Pilih Kelurahan/Desa'} />
+                  <SelectValue 
+                    placeholder={
+                      !formData.district_code 
+                        ? 'Pilih Kecamatan terlebih dahulu'
+                        : loadingVillages 
+                        ? 'Memuat...' 
+                        : 'Pilih Kelurahan/Desa'
+                    } 
+                  />
                 </SelectTrigger>
                 <SelectContent>
-                  {villages.map((village) => (
-                    <SelectItem key={village.id} value={village.id}>
-                      {village.name} - {village.district}
-                    </SelectItem>
-                  ))}
+                  {apiVillages.map((village) => {
+                    const isLinked = dbVillages.some(
+                      v => v.name.toLowerCase() === village.name.toLowerCase()
+                    );
+                    return (
+                      <SelectItem key={village.code} value={village.code}>
+                        {village.name} {isLinked ? '✓ (Terhubung ke Desa Wisata)' : ''}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
+              {formData.village_id && (
+                <p className="text-xs text-green-600 mt-1">
+                  ✓ Merchant akan terhubung ke Desa Wisata
+                </p>
+              )}
+              {formData.village_code && !formData.village_id && (
+                <p className="text-xs text-amber-600 mt-1">
+                  ℹ Merchant berstatus independen (tidak terhubung ke Desa Wisata)
+                </p>
+              )}
             </div>
 
+            {/* Alamat Detail */}
             <div className="mt-3">
               <Label>Alamat Detail</Label>
               <Textarea
