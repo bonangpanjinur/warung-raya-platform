@@ -911,8 +911,8 @@ CREATE TABLE IF NOT EXISTS public.rate_limits (
 -- =====================================================
 
 -- Public Merchants View (safe for public access)
-DROP VIEW IF EXISTS public.public_merchants;
-CREATE VIEW public.public_merchants AS
+DROP VIEW IF EXISTS public.public_merchants CASCADE;
+CREATE OR REPLACE VIEW public.public_merchants AS
 SELECT 
   id,
   village_id,
@@ -938,8 +938,8 @@ FROM public.merchants
 WHERE status = 'ACTIVE' AND registration_status = 'APPROVED';
 
 -- Public Couriers View (safe for public access)
-DROP VIEW IF EXISTS public.public_couriers;
-CREATE VIEW public.public_couriers AS
+DROP VIEW IF EXISTS public.public_couriers CASCADE;
+CREATE OR REPLACE VIEW public.public_couriers AS
 SELECT 
   id,
   name,
