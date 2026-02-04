@@ -51,6 +51,7 @@ AS $$
 $$;
 
 -- Check if user has specific role
+DROP FUNCTION IF EXISTS public.has_role(uuid, public.app_role);
 CREATE OR REPLACE FUNCTION public.has_role(user_uuid uuid, check_role app_role)
 RETURNS boolean
 LANGUAGE sql
@@ -65,6 +66,7 @@ AS $$
 $$;
 
 -- Check if user is order merchant
+DROP FUNCTION IF EXISTS public.is_order_merchant(uuid, uuid);
 CREATE OR REPLACE FUNCTION public.is_order_merchant(check_user_id uuid, check_merchant_id uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -79,6 +81,7 @@ AS $$
 $$;
 
 -- Overload for order_id
+DROP FUNCTION IF EXISTS public.is_order_merchant(uuid);
 CREATE OR REPLACE FUNCTION public.is_order_merchant(check_order_id uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -94,6 +97,7 @@ AS $$
 $$;
 
 -- Check if user is courier owner
+DROP FUNCTION IF EXISTS public.is_courier_owner(uuid, uuid);
 CREATE OR REPLACE FUNCTION public.is_courier_owner(check_user_id uuid, check_courier_id uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -108,6 +112,7 @@ AS $$
 $$;
 
 -- Check if user is order courier
+DROP FUNCTION IF EXISTS public.is_order_courier(uuid);
 CREATE OR REPLACE FUNCTION public.is_order_courier(check_order_id uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -123,6 +128,7 @@ AS $$
 $$;
 
 -- Get quota cost based on price tier
+DROP FUNCTION IF EXISTS public.get_quota_cost(integer);
 CREATE OR REPLACE FUNCTION public.get_quota_cost(product_price integer)
 RETURNS integer
 LANGUAGE plpgsql
@@ -146,6 +152,7 @@ END;
 $$;
 
 -- Use merchant quota credits
+DROP FUNCTION IF EXISTS public.use_merchant_quota(uuid, integer);
 CREATE OR REPLACE FUNCTION public.use_merchant_quota(p_merchant_id uuid, p_credits integer)
 RETURNS boolean
 LANGUAGE plpgsql
