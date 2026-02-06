@@ -95,8 +95,9 @@ async function fetchDirect(url: string): Promise<Response | null> {
     if (response.ok) {
       return response;
     }
-  } catch {
-    // Silent fail, try next method
+    console.warn(`Direct fetch failed with status: ${response.status}`);
+  } catch (error) {
+    console.warn('Direct fetch failed:', error);
   }
   return null;
 }
@@ -128,8 +129,9 @@ async function fetchViaEdgeFunction(type: string, code?: string): Promise<Respon
     if (response.ok) {
       return response;
     }
-  } catch {
-    // Silent fail
+    console.warn(`Proxy fetch failed with status: ${response.status}`);
+  } catch (error) {
+    console.warn('Proxy fetch failed:', error);
   }
   return null;
 }
@@ -150,8 +152,9 @@ async function fetchViaCorsProxy(url: string): Promise<Response | null> {
     if (response.ok) {
       return response;
     }
-  } catch {
-    // Silent fail
+    console.warn(`Proxy fetch failed with status: ${response.status}`);
+  } catch (error) {
+    console.warn('Proxy fetch failed:', error);
   }
   return null;
 }
