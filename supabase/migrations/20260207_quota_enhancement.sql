@@ -1,8 +1,7 @@
 -- MIGRATION: Sistem Kuota V2 (Request & Tiers Enhancement)
--- Deskripsi: Menambahkan kolom bukti pembayaran dan catatan admin, serta memperbarui fungsi persetujuan kuota.
+-- Deskripsi: Menambahkan kolom bukti pembayaran, catatan admin, memperbarui fungsi persetujuan kuota, dan membuat storage bucket.
 
 -- 1. Modifikasi tabel merchant_subscriptions untuk mendukung bukti pembayaran dan catatan admin
--- Tabel ini sudah ada, kita tambahkan kolom yang diperlukan jika belum ada.
 DO $$ 
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='merchant_subscriptions' AND column_name='payment_proof_url') THEN
@@ -12,12 +11,9 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='merchant_subscriptions' AND column_name='admin_notes') THEN
         ALTER TABLE public.merchant_subscriptions ADD COLUMN admin_notes TEXT;
     END IF;
-
-    -- Memastikan status payment_status memiliki nilai yang sesuai
-    -- 'UNPAID', 'PENDING_APPROVAL', 'PAID', 'REJECTED'
 END $$;
 
--- 2. Memastikan tabel quota_tiers ada dan sesuai (Sudah ada di schema v3, tapi kita pastikan strukturnya)
+-- 2. Memastikan tabel quota_tiers ada dan sesuai
 CREATE TABLE IF NOT EXISTS public.quota_tiers (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     min_price integer NOT NULL DEFAULT 0,
@@ -30,7 +26,7 @@ CREATE TABLE IF NOT EXISTS public.quota_tiers (
     updated_at timestamptz NOT NULL DEFAULT now()
 );
 
--- 3. Fungsi Helper untuk menghitung biaya kuota berdasarkan harga (untuk digunakan di sisi database jika perlu)
+-- 3. Fungsi Helper untuk menghitung biaya kuota berdasarkan harga
 CREATE OR REPLACE FUNCTION public.calculate_quota_cost(p_product_price integer)
 RETURNS integer
 LANGUAGE plpgsql
@@ -52,7 +48,6 @@ END;
 $$;
 
 -- 4. Fungsi untuk menyetujui permintaan kuota (RPC)
--- Fungsi ini akan dipanggil oleh Admin untuk mengaktifkan paket dan memperbarui merchant.current_subscription_id
 CREATE OR REPLACE FUNCTION public.approve_quota_subscription(p_subscription_id UUID, p_admin_notes TEXT DEFAULT NULL)
 RETURNS JSON
 LANGUAGE plpgsql
@@ -130,3 +125,45 @@ WHERE NOT EXISTS (SELECT 1 FROM public.quota_tiers WHERE min_price = 50001);
 INSERT INTO public.quota_tiers (min_price, max_price, credit_cost, description, sort_order)
 SELECT 200001, NULL, 5, 'Produk Mahal', 3
 WHERE NOT EXISTS (SELECT 1 FROM public.quota_tiers WHERE min_price = 200001);
+
+-- 7. Membuat Storage Bucket 'merchants' jika belum ada
+-- Catatan: Di Supabase, bucket dikelola melalui tabel storage.buckets
+INSERT INTO storage.buckets (id, name, public)
+SELECT 'merchants', 'merchants', true
+WHERE NOT EXISTS (
+    SELECT 1 FROM storage.buckets WHERE id = 'merchants'
+);
+
+-- 8. Menambahkan Storage Policies untuk bucket 'merchants'
+-- Hapus policy lama jika ada untuk menghindari duplikasi saat re-run
+DO $$ 
+BEGIN
+    DELETE FROM storage.policies WHERE bucket_id = 'merchants';
+END $$;
+
+-- Policy: Merchant bisa upload bukti pembayaran ke folder payment-proofs
+CREATE POLICY "Merchant upload proof"
+ON storage.objects FOR INSERT
+TO authenticated
+WITH CHECK (
+    bucket_id = 'merchants' AND 
+    (storage.foldername(name))[1] = 'payment-proofs'
+);
+
+-- Policy: Semua orang bisa melihat bukti pembayaran (Public bucket)
+CREATE POLICY "Public view proof"
+ON storage.objects FOR SELECT
+TO public
+USING (bucket_id = 'merchants');
+
+-- Policy: Admin bisa mengelola semua file di bucket merchants
+CREATE POLICY "Admin manage merchants bucket"
+ON storage.objects FOR ALL
+TO authenticated
+USING (
+    bucket_id = 'merchants' AND
+    EXISTS (
+        SELECT 1 FROM public.user_roles 
+        WHERE user_id = auth.uid() AND role = 'admin'
+    )
+);
