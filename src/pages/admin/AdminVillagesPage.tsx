@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapPin, Eye, Check, X, MoreHorizontal, Plus, Edit, Trash2 } from 'lucide-react';
+import { MapPin, Eye, Check, X, MoreHorizontal, Plus, Edit, Trash2, Image as ImageIcon } from 'lucide-react';
 import { AdminLayout } from '@/components/admin/AdminLayout';
 import { DataTable } from '@/components/admin/DataTable';
 import { Badge } from '@/components/ui/badge';
@@ -35,6 +35,9 @@ interface VillageRow {
   district: string;
   subdistrict: string | null;
   description: string | null;
+  image_url: string | null;
+  location_lat: number | null;
+  location_lng: number | null;
   contact_name: string | null;
   contact_phone: string | null;
   contact_email: string | null;
@@ -59,7 +62,7 @@ export default function AdminVillagesPage() {
       setLoading(true);
       const { data, error } = await supabase
         .from('villages')
-        .select('id, name, regency, district, subdistrict, description, contact_name, contact_phone, contact_email, registration_status, is_active, registered_at')
+        .select('id, name, regency, district, subdistrict, description, image_url, location_lat, location_lng, contact_name, contact_phone, contact_email, registration_status, is_active, registered_at')
         .order('registered_at', { ascending: false });
 
       if (error) throw error;
@@ -134,12 +137,29 @@ export default function AdminVillagesPage() {
 
   const columns = [
     {
+      key: 'image',
+      header: 'Gambar',
+      render: (item: VillageRow) => (
+        <div className="h-12 w-12 rounded-md overflow-hidden bg-muted flex items-center justify-center border">
+          {item.image_url ? (
+            <img 
+              src={item.image_url} 
+              alt={item.name} 
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <ImageIcon className="h-6 w-6 text-muted-foreground" />
+          )}
+        </div>
+      ),
+    },
+    {
       key: 'name',
       header: 'Nama Desa',
       render: (item: VillageRow) => (
-        <div>
-          <p className="font-medium">{item.name}</p>
-          <p className="text-xs text-muted-foreground">{item.subdistrict || '-'}</p>
+        <div className="max-w-[200px]">
+          <p className="font-medium truncate">{item.name}</p>
+          <p className="text-xs text-muted-foreground line-clamp-1">{item.description || '-'}</p>
         </div>
       ),
     },
@@ -148,8 +168,8 @@ export default function AdminVillagesPage() {
       header: 'Lokasi',
       render: (item: VillageRow) => (
         <div className="text-sm">
-          <p>{item.province}</p>
-          <p className="text-xs text-muted-foreground">{item.regency}, {item.district}</p>
+          <p className="font-medium">{item.district}</p>
+          <p className="text-xs text-muted-foreground">{item.regency}</p>
         </div>
       ),
     },
@@ -282,6 +302,9 @@ export default function AdminVillagesPage() {
             district: selectedVillage.district,
             subdistrict: selectedVillage.subdistrict,
             description: selectedVillage.description,
+            image_url: selectedVillage.image_url,
+            location_lat: selectedVillage.location_lat,
+            location_lng: selectedVillage.location_lng,
             contact_name: selectedVillage.contact_name,
             contact_phone: selectedVillage.contact_phone,
             contact_email: selectedVillage.contact_email,

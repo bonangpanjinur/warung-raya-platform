@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save } from 'lucide-react';
+import { Save, Image as ImageIcon, MapPin } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -19,6 +19,8 @@ import {
   fetchProvinces, fetchRegencies, fetchDistricts, fetchVillages,
   type Region 
 } from '@/lib/addressApi';
+import { ImageUpload } from '@/components/ui/ImageUpload';
+import { AdminLocationPicker } from './AdminLocationPicker';
 
 interface VillageEditDialogProps {
   open: boolean;
@@ -31,6 +33,9 @@ interface VillageEditDialogProps {
     district: string;
     subdistrict: string | null;
     description: string | null;
+    image_url?: string | null;
+    location_lat?: number | null;
+    location_lng?: number | null;
     contact_name: string | null;
     contact_phone: string | null;
     contact_email: string | null;
@@ -56,6 +61,9 @@ export function VillageEditDialog({
     district: '',
     subdistrict: '',
     description: '',
+    image_url: '',
+    location_lat: null as number | null,
+    location_lng: null as number | null,
     contact_name: '',
     contact_phone: '',
     contact_email: '',
@@ -78,6 +86,9 @@ export function VillageEditDialog({
         district: initialData.district || '',
         subdistrict: initialData.subdistrict || '',
         description: initialData.description || '',
+        image_url: initialData.image_url || '',
+        location_lat: initialData.location_lat ?? null,
+        location_lng: initialData.location_lng ?? null,
         contact_name: initialData.contact_name || '',
         contact_phone: initialData.contact_phone || '',
         contact_email: initialData.contact_email || '',
@@ -216,6 +227,9 @@ export function VillageEditDialog({
           district: districtName,
           subdistrict: subdistrictName,
           description: formData.description || null,
+          image_url: formData.image_url || null,
+          location_lat: formData.location_lat,
+          location_lng: formData.location_lng,
           contact_name: formData.contact_name || null,
           contact_phone: formData.contact_phone || null,
           contact_email: formData.contact_email || null,
@@ -245,12 +259,49 @@ export function VillageEditDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          <div>
-            <Label>Nama Desa *</Label>
-            <Input
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="Nama desa wisata"
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-4">
+              <div>
+                <Label>Nama Desa *</Label>
+                <Input
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="Nama desa wisata"
+                />
+              </div>
+              <div>
+                <Label>Deskripsi *</Label>
+                <Textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Deskripsi singkat desa wisata"
+                  rows={4}
+                />
+              </div>
+            </div>
+            <div>
+              <Label className="flex items-center gap-2 mb-2">
+                <ImageIcon className="h-4 w-4" />
+                Gambar Utama
+              </Label>
+              <ImageUpload
+                bucket="village-images"
+                path={`villages/${Date.now()}`}
+                value={formData.image_url}
+                onChange={(url) => setFormData({ ...formData, image_url: url || '' })}
+                aspectRatio="video"
+              />
+            </div>
+          </div>
+
+          <div className="border-t pt-4">
+            <Label className="flex items-center gap-2 mb-2">
+              <MapPin className="h-4 w-4" />
+              Lokasi Peta *
+            </Label>
+            <AdminLocationPicker
+              value={formData.location_lat && formData.location_lng ? { lat: formData.location_lat, lng: formData.location_lng } : null}
+              onChange={(loc) => setFormData({ ...formData, location_lat: loc.lat, location_lng: loc.lng })}
             />
           </div>
 
