@@ -127,9 +127,15 @@ export default function RegisterVillagePage() {
       const districtName = districtsList.find(d => d.code === data.district)?.name || '';
       const subdistrictName = subdistrictsList.find(s => s.code === data.subdistrict)?.name || '';
 
+      if (!user) {
+        toast.error('Anda harus login untuk mendaftar');
+        navigate('/auth');
+        return;
+      }
+
       const { error } = await supabase.from('villages').insert({
         name: data.name.trim(),
-        user_id: user?.id || null,
+        user_id: user.id,
         province: provinceName,
         regency: regencyName,
         district: districtName,

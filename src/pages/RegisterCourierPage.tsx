@@ -186,12 +186,18 @@ export default function RegisterCourierPage() {
         uploadFile(vehicleFile!, 'vehicle'),
       ]);
 
+      if (!user) {
+        toast.error('Anda harus login untuk mendaftar');
+        navigate('/auth');
+        return;
+      }
+
       // Insert courier data
       const { error } = await supabase.from('couriers').insert({
-        user_id: user?.id || null,
+        user_id: user.id,
         name: formData.name,
         phone: formData.phone,
-        email: formData.email || user?.email || null,
+        email: formData.email || user.email || null,
         ktp_number: formData.ktpNumber,
         vehicle_type: formData.vehicleType,
         vehicle_plate: formData.vehiclePlate || null,

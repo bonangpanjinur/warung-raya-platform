@@ -266,9 +266,15 @@ export default function RegisterMerchantPage() {
       const districtName = districtsList.find(d => d.code === data.district)?.name || '';
       const subdistrictName = subdistrictsList.find(s => s.code === data.subdistrict)?.name || '';
 
+      if (!user) {
+        toast.error('Anda harus login untuk mendaftar');
+        navigate('/auth');
+        return;
+      }
+
       const { error } = await supabase.from('merchants').insert({
         name: data.name.trim(),
-        user_id: user?.id || null,
+        user_id: user.id,
         village_id: matchedVillage?.id || null,
         address: data.addressDetail.trim(),
         province: provinceName,
