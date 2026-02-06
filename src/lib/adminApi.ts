@@ -95,6 +95,7 @@ export async function fetchPendingVillages(): Promise<Village[]> {
   return (data || []).map(v => ({
     id: v.id,
     name: v.name,
+    province: v.province,
     district: v.district,
     regency: v.regency,
     subdistrict: v.subdistrict || '',
@@ -475,6 +476,7 @@ export async function getVillages(): Promise<Village[]> {
   return (data || []).map(v => ({
     id: v.id,
     name: v.name,
+    province: v.province,
     district: v.district,
     regency: v.regency,
     subdistrict: v.subdistrict || '',

@@ -3,6 +3,7 @@
 export interface Village {
   id: string;
   name: string;
+  province?: string;
   district: string;
   regency: string;
   subdistrict?: string;

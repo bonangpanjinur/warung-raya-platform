@@ -35,6 +35,7 @@ import { VillageEditDialog } from '@/components/admin/VillageEditDialog';
 interface VillageDetail {
   id: string;
   name: string;
+  province: string | null;
   district: string;
   regency: string;
   subdistrict: string | null;
@@ -307,7 +308,9 @@ export default function AdminVillageDetailPage() {
               <div className="flex items-start justify-between">
                 <div>
                   <h2 className="text-xl font-bold">{village.name}</h2>
-                  <p className="text-sm text-muted-foreground">{village.subdistrict || village.district}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {village.subdistrict || village.district}, {village.regency}{village.province ? `, ${village.province}` : ''}
+                  </p>
                 </div>
                 {getStatusBadge(village.registration_status, village.is_active)}
               </div>
