@@ -1,5 +1,19 @@
 import { useState, useEffect } from 'react';
-import { Package, Plus, Edit, Trash2, Info, CreditCard, Check, X, Eye, Upload, ExternalLink } from 'lucide-react';
+import { 
+  Package, 
+  Plus, 
+  Edit, 
+  Trash2, 
+  Info, 
+  CreditCard, 
+  Check, 
+  X, 
+  Eye, 
+  ExternalLink, 
+  Settings, 
+  Save, 
+  Edit2 
+} from 'lucide-react';
 import { AdminLayout } from '@/components/admin/AdminLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -68,27 +82,46 @@ interface PaymentSettings {
   qris_url: string;
 }
 
-export default function AdminPackagesPage() {
+interface QuotaTier {
+  id: string;
+  min_price: number;
+  max_price: number | null;
+  credit_cost: number;
+  description: string | null;
+  is_active: boolean;
+  sort_order: number;
+}
+
+export default function AdminTransactionQuotaPage() {
   const [packages, setPackages] = useState<TransactionPackage[]>([]);
   const [requests, setRequests] = useState<PackageRequest[]>([]);
+  const [tiers, setTiers] = useState<QuotaTier[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [requestDialogOpen, setRequestDialogOpen] = useState(false);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
+  const [tierDialogOpen, setTierDialogOpen] = useState(false);
   const [editingPackage, setEditingPackage] = useState<TransactionPackage | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<PackageRequest | null>(null);
+  const [editingTier, setEditingTier] = useState<QuotaTier | null>(null);
   const [adminNotes, setAdminNotes] = useState('');
   const [processing, setProcessing] = useState(false);
   
-  const [formData, setFormData] = useState({
+  const [packageFormData, setPackageFormData] = useState({
     name: '',
-    classification_price: 'medium',
     price_per_transaction: 50000,
     group_commission_percent: 10,
     transaction_quota: 100,
     validity_days: 30,
     description: '',
     is_active: true,
+  });
+
+  const [tierFormData, setTierFormData] = useState({
+    min_price: 0,
+    max_price: '',
+    credit_cost: 1,
+    description: ''
   });
 
   const [paymentSettings, setPaymentSettings] = useState<PaymentSettings>({
@@ -125,6 +158,15 @@ export default function AdminPackagesPage() {
       if (reqError) throw reqError;
       setRequests((reqData || []) as any[]);
 
+      // Fetch tiers
+      const { data: tierData, error: tierError } = await supabase
+        .from('quota_tiers')
+        .select('*')
+        .order('sort_order', { ascending: true });
+
+      if (tierError) throw tierError;
+      setTiers(tierData || []);
+
       // Fetch payment settings
       const { data: settingsData } = await supabase
         .from('app_settings')
@@ -147,12 +189,13 @@ export default function AdminPackagesPage() {
     fetchData();
   }, []);
 
-  const handleSubmit = async () => {
+  // Package handlers
+  const handlePackageSubmit = async () => {
     try {
       if (editingPackage) {
         const { error } = await supabase
           .from('transaction_packages')
-          .update(formData)
+          .update(packageFormData)
           .eq('id', editingPackage.id);
 
         if (error) throw error;
@@ -160,14 +203,14 @@ export default function AdminPackagesPage() {
       } else {
         const { error } = await supabase
           .from('transaction_packages')
-          .insert(formData);
+          .insert(packageFormData);
 
         if (error) throw error;
         toast.success('Paket berhasil ditambahkan');
       }
 
       setDialogOpen(false);
-      resetForm();
+      resetPackageForm();
       fetchData();
     } catch (error) {
       console.error('Error saving package:', error);
@@ -175,7 +218,7 @@ export default function AdminPackagesPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handlePackageDelete = async (id: string) => {
     if (!confirm('Yakin ingin menghapus paket ini?')) return;
 
     try {
@@ -193,26 +236,68 @@ export default function AdminPackagesPage() {
     }
   };
 
-  const handleUpdateSettings = async () => {
+  // Tier handlers
+  const handleTierSubmit = async () => {
+    setProcessing(true);
     try {
-      const { error } = await supabase
-        .from('app_settings')
-        .upsert({
-          key: 'payment_settings',
-          value: paymentSettings,
-          category: 'payment',
-          description: 'Pengaturan pembayaran untuk pembelian paket'
-        }, { onConflict: 'key' });
+      const data = {
+        min_price: tierFormData.min_price,
+        max_price: tierFormData.max_price ? parseInt(tierFormData.max_price) : null,
+        credit_cost: tierFormData.credit_cost,
+        description: tierFormData.description || null,
+        is_active: true
+      };
 
-      if (error) throw error;
-      toast.success('Pengaturan pembayaran berhasil diperbarui');
-      setSettingsDialogOpen(false);
+      if (editingTier) {
+        const { error } = await supabase
+          .from('quota_tiers')
+          .update(data)
+          .eq('id', editingTier.id);
+
+        if (error) throw error;
+        toast.success('Tier kuota berhasil diperbarui');
+      } else {
+        const { error } = await supabase
+          .from('quota_tiers')
+          .insert({
+            ...data,
+            sort_order: tiers.length + 1
+          });
+
+        if (error) throw error;
+        toast.success('Tier kuota berhasil ditambahkan');
+      }
+      
+      setTierDialogOpen(false);
+      resetTierForm();
+      fetchData();
     } catch (error) {
-      console.error('Error saving settings:', error);
-      toast.error('Gagal menyimpan pengaturan');
+      console.error('Error saving tier:', error);
+      toast.error('Gagal menyimpan tier kuota');
+    } finally {
+      setProcessing(false);
     }
   };
 
+  const handleTierDelete = async (id: string) => {
+    if (!confirm('Yakin ingin menghapus tier ini?')) return;
+    
+    try {
+      const { error } = await supabase
+        .from('quota_tiers')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      toast.success('Tier kuota berhasil dihapus');
+      fetchData();
+    } catch (error) {
+      console.error('Error deleting tier:', error);
+      toast.error('Gagal menghapus tier kuota');
+    }
+  };
+
+  // Request handlers
   const handleApproveRequest = async (request: PackageRequest) => {
     setProcessing(true);
     try {
@@ -268,6 +353,7 @@ export default function AdminPackagesPage() {
     }
   };
 
+  // Utility functions
   const handleQRISUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -298,32 +384,46 @@ export default function AdminPackagesPage() {
     }
   };
 
-  const handleEdit = (pkg: TransactionPackage) => {
-    setEditingPackage(pkg);
-    setFormData({
-      name: pkg.name,
-      classification_price: (pkg as any).classification_price || 'medium',
-      price_per_transaction: pkg.price_per_transaction,
-      group_commission_percent: pkg.group_commission_percent,
-      transaction_quota: pkg.transaction_quota,
-      validity_days: pkg.validity_days,
-      description: pkg.description || '',
-      is_active: pkg.is_active,
-    });
-    setDialogOpen(true);
+  const handleUpdateSettings = async () => {
+    try {
+      const { error } = await supabase
+        .from('app_settings')
+        .upsert({
+          key: 'payment_settings',
+          value: paymentSettings,
+          category: 'payment',
+          description: 'Pengaturan pembayaran untuk pembelian paket'
+        }, { onConflict: 'key' });
+
+      if (error) throw error;
+      toast.success('Pengaturan pembayaran berhasil diperbarui');
+      setSettingsDialogOpen(false);
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      toast.error('Gagal menyimpan pengaturan');
+    }
   };
 
-  const resetForm = () => {
+  const resetPackageForm = () => {
     setEditingPackage(null);
-    setFormData({
+    setPackageFormData({
       name: '',
-      classification_price: 'medium',
       price_per_transaction: 50000,
       group_commission_percent: 10,
       transaction_quota: 100,
       validity_days: 30,
       description: '',
       is_active: true,
+    });
+  };
+
+  const resetTierForm = () => {
+    setEditingTier(null);
+    setTierFormData({
+      min_price: 0,
+      max_price: '',
+      credit_cost: 1,
+      description: ''
     });
   };
 
@@ -341,14 +441,16 @@ export default function AdminPackagesPage() {
   };
 
   return (
-    <AdminLayout title="Paket Transaksi" subtitle="Kelola paket kuota transaksi dan verifikasi pembayaran">
+    <AdminLayout title="Paket Kuota Transaksi" subtitle="Kelola paket, pengaturan kuota, dan verifikasi permintaan">
       <div className="space-y-6">
         <Tabs defaultValue="requests">
-          <TabsList className="grid w-full grid-cols-2 max-w-[400px]">
-            <TabsTrigger value="requests">Permintaan Paket</TabsTrigger>
-            <TabsTrigger value="packages">Daftar Paket</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-3 max-w-[600px]">
+            <TabsTrigger value="requests">Manajemen Permintaan</TabsTrigger>
+            <TabsTrigger value="packages">Paket Transaksi</TabsTrigger>
+            <TabsTrigger value="tiers">Pengaturan Kuota</TabsTrigger>
           </TabsList>
 
+          {/* TAB: REQUESTS */}
           <TabsContent value="requests" className="space-y-4 pt-4">
             <div className="flex justify-end">
               <Button variant="outline" size="sm" onClick={() => setSettingsDialogOpen(true)}>
@@ -360,7 +462,7 @@ export default function AdminPackagesPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Daftar Permintaan Paket</CardTitle>
-                <CardDescription>Verifikasi pembayaran dari merchant untuk aktivasi kuota</CardDescription>
+                <CardDescription>Verifikasi bukti pembayaran dari merchant untuk aktivasi kuota</CardDescription>
               </CardHeader>
               <CardContent>
                 {loading ? (
@@ -416,10 +518,11 @@ export default function AdminPackagesPage() {
             </Card>
           </TabsContent>
 
+          {/* TAB: PACKAGES */}
           <TabsContent value="packages" className="space-y-4 pt-4">
             <div className="flex justify-between items-center">
-              <h3 className="text-lg font-medium">Paket Tersedia</h3>
-              <Button onClick={() => { resetForm(); setDialogOpen(true); }}>
+              <h3 className="text-lg font-medium">Daftar Paket Tersedia</h3>
+              <Button onClick={() => { resetPackageForm(); setDialogOpen(true); }}>
                 <Plus className="h-4 w-4 mr-2" />
                 Tambah Paket
               </Button>
@@ -453,22 +556,99 @@ export default function AdminPackagesPage() {
                       </div>
                     </div>
                   </CardContent>
-                  <CardFooter className="pt-2 flex justify-end gap-2">
-                    <Button size="sm" variant="outline" onClick={() => handleEdit(pkg)}>
+                  <div className="p-6 pt-0 flex justify-end gap-2">
+                    <Button size="sm" variant="outline" onClick={() => {
+                      setEditingPackage(pkg);
+                      setPackageFormData({
+                        name: pkg.name,
+                        price_per_transaction: pkg.price_per_transaction,
+                        group_commission_percent: pkg.group_commission_percent,
+                        transaction_quota: pkg.transaction_quota,
+                        validity_days: pkg.validity_days,
+                        description: pkg.description || '',
+                        is_active: pkg.is_active,
+                      });
+                      setDialogOpen(true);
+                    }}>
                       <Edit className="h-4 w-4 mr-1" />
                       Edit
                     </Button>
-                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(pkg.id)}>
+                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handlePackageDelete(pkg.id)}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
-                  </CardFooter>
+                  </div>
                 </Card>
               ))}
             </div>
           </TabsContent>
+
+          {/* TAB: TIERS */}
+          <TabsContent value="tiers" className="space-y-4 pt-4">
+            <Alert className="border-primary/20 bg-primary/5">
+              <Info className="h-4 w-4 text-primary" />
+              <AlertTitle>Informasi</AlertTitle>
+              <AlertDescription>
+                Tier kuota menentukan berapa kuota yang dihabiskan untuk setiap transaksi berdasarkan rentang harga produk.
+              </AlertDescription>
+            </Alert>
+
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Tier Biaya Kuota</CardTitle>
+                    <CardDescription>Biaya kuota yang dipotong berdasarkan rentang harga produk</CardDescription>
+                  </div>
+                  <Button onClick={() => { resetTierForm(); setTierDialogOpen(true); }}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Tambah Tier
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {tiers.map((tier, index) => (
+                    <div key={tier.id} className="flex items-center justify-between p-4 bg-secondary/30 rounded-lg border border-border">
+                      <div>
+                        <p className="font-medium">Tier {index + 1}: {tier.description || 'Tanpa Deskripsi'}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {formatPrice(tier.min_price)} - {tier.max_price ? formatPrice(tier.max_price) : 'Tak terbatas'}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <p className="font-bold text-primary">{tier.credit_cost} Kuota</p>
+                          <p className="text-xs text-muted-foreground">per transaksi</p>
+                        </div>
+                        <div className="flex gap-1">
+                          <Button size="icon" variant="ghost" onClick={() => {
+                            setEditingTier(tier);
+                            setTierFormData({
+                              min_price: tier.min_price,
+                              max_price: tier.max_price?.toString() || '',
+                              credit_cost: tier.credit_cost,
+                              description: tier.description || ''
+                            });
+                            setTierDialogOpen(true);
+                          }}>
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="text-destructive" onClick={() => handleTierDelete(tier.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
 
-        {/* Dialog Add/Edit Package */}
+        {/* DIALOGS */}
+        
+        {/* Package Dialog */}
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogContent>
             <DialogHeader>
@@ -476,79 +656,79 @@ export default function AdminPackagesPage() {
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Nama Paket</Label>
-                <Input 
-                  id="name" 
-                  value={formData.name} 
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Contoh: Paket UMKM Hemat"
-                />
+                <Label htmlFor="pkg-name">Nama Paket</Label>
+                <Input id="pkg-name" value={packageFormData.name} onChange={(e) => setPackageFormData({ ...packageFormData, name: e.target.value })} placeholder="Contoh: Paket Hemat" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="quota">Kuota Transaksi</Label>
-                  <Input 
-                    id="quota" 
-                    type="number"
-                    value={formData.transaction_quota} 
-                    onChange={(e) => setFormData({ ...formData, transaction_quota: parseInt(e.target.value) })}
-                  />
+                  <Label htmlFor="pkg-quota">Kuota Transaksi</Label>
+                  <Input id="pkg-quota" type="number" value={packageFormData.transaction_quota} onChange={(e) => setPackageFormData({ ...packageFormData, transaction_quota: parseInt(e.target.value) })} />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="price">Harga Paket (Rp)</Label>
-                  <Input 
-                    id="price" 
-                    type="number"
-                    value={formData.price_per_transaction} 
-                    onChange={(e) => setFormData({ ...formData, price_per_transaction: parseInt(e.target.value) })}
-                  />
+                  <Label htmlFor="pkg-price">Harga Paket (Rp)</Label>
+                  <Input id="pkg-price" type="number" value={packageFormData.price_per_transaction} onChange={(e) => setPackageFormData({ ...packageFormData, price_per_transaction: parseInt(e.target.value) })} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="validity">Masa Aktif (Hari)</Label>
-                  <Input 
-                    id="validity" 
-                    type="number"
-                    value={formData.validity_days} 
-                    onChange={(e) => setFormData({ ...formData, validity_days: parseInt(e.target.value) })}
-                  />
+                  <Label htmlFor="pkg-validity">Masa Aktif (Hari)</Label>
+                  <Input id="pkg-validity" type="number" value={packageFormData.validity_days} onChange={(e) => setPackageFormData({ ...packageFormData, validity_days: parseInt(e.target.value) })} />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="commission">Komisi Kas (%)</Label>
-                  <Input 
-                    id="commission" 
-                    type="number"
-                    value={formData.group_commission_percent} 
-                    onChange={(e) => setFormData({ ...formData, group_commission_percent: parseInt(e.target.value) })}
-                  />
+                  <Label htmlFor="pkg-commission">Komisi Kas (%)</Label>
+                  <Input id="pkg-commission" type="number" value={packageFormData.group_commission_percent} onChange={(e) => setPackageFormData({ ...packageFormData, group_commission_percent: parseInt(e.target.value) })} />
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="description">Deskripsi</Label>
-                <Textarea 
-                  id="description" 
-                  value={formData.description} 
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                />
+                <Label htmlFor="pkg-desc">Deskripsi</Label>
+                <Textarea id="pkg-desc" value={packageFormData.description} onChange={(e) => setPackageFormData({ ...packageFormData, description: e.target.value })} />
               </div>
               <div className="flex items-center space-x-2">
-                <Switch 
-                  id="active" 
-                  checked={formData.is_active} 
-                  onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
-                />
-                <Label htmlFor="active">Paket Aktif</Label>
+                <Switch id="pkg-active" checked={packageFormData.is_active} onCheckedChange={(checked) => setPackageFormData({ ...packageFormData, is_active: checked })} />
+                <Label htmlFor="pkg-active">Paket Aktif</Label>
               </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setDialogOpen(false)}>Batal</Button>
-              <Button onClick={handleSubmit}>Simpan</Button>
+              <Button onClick={handlePackageSubmit}>Simpan</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
 
-        {/* Dialog Request Detail */}
+        {/* Tier Dialog */}
+        <Dialog open={tierDialogOpen} onOpenChange={setTierDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{editingTier ? 'Edit Tier Kuota' : 'Tambah Tier Kuota'}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Harga Minimal (Rp)</Label>
+                  <Input type="number" value={tierFormData.min_price} onChange={(e) => setTierFormData({ ...tierFormData, min_price: parseInt(e.target.value) || 0 })} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Harga Maksimal (Rp)</Label>
+                  <Input type="number" value={tierFormData.max_price} onChange={(e) => setTierFormData({ ...tierFormData, max_price: e.target.value })} placeholder="Tak terbatas" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Jumlah Kuota yang Dihabiskan</Label>
+                <Input type="number" min={1} value={tierFormData.credit_cost} onChange={(e) => setTierFormData({ ...tierFormData, credit_cost: parseInt(e.target.value) || 1 })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Deskripsi</Label>
+                <Input value={tierFormData.description} onChange={(e) => setTierFormData({ ...tierFormData, description: e.target.value })} placeholder="Contoh: Produk harga rendah" />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setTierDialogOpen(false)}>Batal</Button>
+              <Button onClick={handleTierSubmit} disabled={processing}>Simpan</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Request Detail Dialog */}
         <Dialog open={requestDialogOpen} onOpenChange={setRequestDialogOpen}>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
@@ -580,65 +760,34 @@ export default function AdminPackagesPage() {
                     />
                   </div>
                 </div>
-                <div className="space-y-4">
+                <div className="space-y-2">
                   <Label className="text-muted-foreground">Bukti Pembayaran</Label>
                   <div className="border rounded-lg overflow-hidden bg-secondary/20 aspect-[3/4] flex items-center justify-center relative group">
                     {selectedRequest.payment_proof_url ? (
                       <>
-                        <img 
-                          src={selectedRequest.payment_proof_url} 
-                          alt="Bukti Pembayaran" 
-                          className="w-full h-full object-contain"
-                        />
-                        <a 
-                          href={selectedRequest.payment_proof_url} 
-                          target="_blank" 
-                          rel="noreferrer"
-                          className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
-                        >
-                          <Button variant="secondary" size="sm">
-                            <ExternalLink className="h-4 w-4 mr-2" />
-                            Buka Gambar
-                          </Button>
+                        <img src={selectedRequest.payment_proof_url} alt="Bukti Pembayaran" className="w-full h-full object-contain" />
+                        <a href={selectedRequest.payment_proof_url} target="_blank" rel="noreferrer" className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                          <Button variant="secondary" size="sm"><ExternalLink className="h-4 w-4 mr-2" />Buka Gambar</Button>
                         </a>
                       </>
                     ) : (
-                      <div className="text-center p-6 text-muted-foreground">
-                        <Info className="h-10 w-10 mx-auto mb-2 opacity-20" />
-                        <p>Belum ada bukti pembayaran yang diunggah</p>
-                      </div>
+                      <div className="text-center p-6 text-muted-foreground"><Info className="h-10 w-10 mx-auto mb-2 opacity-20" /><p>Belum ada bukti pembayaran</p></div>
                     )}
                   </div>
                 </div>
               </div>
             )}
             <DialogFooter className="flex justify-between items-center sm:justify-between">
-              <div className="text-sm text-muted-foreground">
-                Status: {selectedRequest && getPaymentStatusBadge(selectedRequest.payment_status)}
-              </div>
+              <div className="text-sm text-muted-foreground">Status: {selectedRequest && getPaymentStatusBadge(selectedRequest.payment_status)}</div>
               <div className="flex gap-2">
-                <Button 
-                  variant="outline" 
-                  className="text-destructive hover:bg-destructive/10"
-                  onClick={() => selectedRequest && handleRejectRequest(selectedRequest)}
-                  disabled={processing || !selectedRequest || selectedRequest.payment_status === 'PAID' || selectedRequest.payment_status === 'REJECTED'}
-                >
-                  <X className="h-4 w-4 mr-1" />
-                  Tolak
-                </Button>
-                <Button 
-                  onClick={() => selectedRequest && handleApproveRequest(selectedRequest)}
-                  disabled={processing || !selectedRequest || selectedRequest.payment_status === 'PAID' || selectedRequest.payment_status === 'REJECTED'}
-                >
-                  <Check className="h-4 w-4 mr-1" />
-                  Setujui & Aktifkan
-                </Button>
+                <Button variant="outline" className="text-destructive hover:bg-destructive/10" onClick={() => selectedRequest && handleRejectRequest(selectedRequest)} disabled={processing || !selectedRequest || selectedRequest.payment_status === 'PAID' || selectedRequest.payment_status === 'REJECTED'}><X className="h-4 w-4 mr-1" />Tolak</Button>
+                <Button onClick={() => selectedRequest && handleApproveRequest(selectedRequest)} disabled={processing || !selectedRequest || selectedRequest.payment_status === 'PAID' || selectedRequest.payment_status === 'REJECTED'}><Check className="h-4 w-4 mr-1" />Setujui & Aktifkan</Button>
               </div>
             </DialogFooter>
           </DialogContent>
         </Dialog>
 
-        {/* Dialog Payment Settings */}
+        {/* Payment Settings Dialog */}
         <Dialog open={settingsDialogOpen} onOpenChange={setSettingsDialogOpen}>
           <DialogContent>
             <DialogHeader>
@@ -647,27 +796,15 @@ export default function AdminPackagesPage() {
             <div className="space-y-4 py-4">
               <div className="space-y-2">
                 <Label htmlFor="bankName">Nama Bank</Label>
-                <Input 
-                  id="bankName" 
-                  value={paymentSettings.bank_name} 
-                  onChange={(e) => setPaymentSettings({ ...paymentSettings, bank_name: e.target.value })}
-                />
+                <Input id="bankName" value={paymentSettings.bank_name} onChange={(e) => setPaymentSettings({ ...paymentSettings, bank_name: e.target.value })} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="accNumber">Nomor Rekening</Label>
-                <Input 
-                  id="accNumber" 
-                  value={paymentSettings.account_number} 
-                  onChange={(e) => setPaymentSettings({ ...paymentSettings, account_number: e.target.value })}
-                />
+                <Input id="accNumber" value={paymentSettings.account_number} onChange={(e) => setPaymentSettings({ ...paymentSettings, account_number: e.target.value })} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="accName">Nama Pemilik Rekening</Label>
-                <Input 
-                  id="accName" 
-                  value={paymentSettings.account_name} 
-                  onChange={(e) => setPaymentSettings({ ...paymentSettings, account_name: e.target.value })}
-                />
+                <Input id="accName" value={paymentSettings.account_name} onChange={(e) => setPaymentSettings({ ...paymentSettings, account_name: e.target.value })} />
               </div>
               <div className="space-y-2">
                 <Label>QRIS (Opsional)</Label>
@@ -691,13 +828,5 @@ export default function AdminPackagesPage() {
         </Dialog>
       </div>
     </AdminLayout>
-  );
-}
-
-function CardFooter({ children, className = "" }: { children: React.ReactNode, className?: string }) {
-  return (
-    <div className={`p-6 pt-0 ${className}`}>
-      {children}
-    </div>
   );
 }
