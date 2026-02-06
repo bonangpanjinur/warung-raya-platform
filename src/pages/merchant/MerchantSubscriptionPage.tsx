@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Package, CreditCard, AlertTriangle, Clock, TrendingUp, Upload, CheckCircle2, XCircle, Info, ExternalLink } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Package, CreditCard, AlertTriangle, Clock, TrendingUp, Upload, CheckCircle2, XCircle, Info, ExternalLink, X, FileCheck } from 'lucide-react';
 import { MerchantLayout } from '@/components/merchant/MerchantLayout';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -82,6 +82,11 @@ export default function MerchantSubscriptionPage() {
   const [purchasing, setPurchasing] = useState(false);
   const [paymentSettings, setPaymentSettings] = useState<PaymentSettings | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchData = async () => {
     if (!user) return;
@@ -205,6 +210,8 @@ export default function MerchantSubscriptionPage() {
       setBuyDialogOpen(false);
       setPendingSubscription(data as any);
       setPaymentDialogOpen(true);
+      setPreviewImage(null);
+      setSelectedFile(null);
       fetchData();
     } catch (error) {
       console.error('Error purchasing package:', error);
@@ -214,21 +221,91 @@ export default function MerchantSubscriptionPage() {
     }
   };
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>, subId: string) => {
+  const validateFile = (file: File): { valid: boolean; error?: string } => {
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+
+    if (file.size > maxSize) {
+      return { valid: false, error: 'Ukuran file tidak boleh lebih dari 5MB' };
+    }
+
+    if (!allowedTypes.includes(file.type)) {
+      return { valid: false, error: 'Format file harus JPG, PNG, WebP, atau PDF' };
+    }
+
+    return { valid: true };
+  };
+
+  const handleFileSelect = (file: File) => {
+    const validation = validateFile(file);
+    
+    if (!validation.valid) {
+      toast.error(validation.error);
+      return;
+    }
+
+    setSelectedFile(file);
+    
+    // Create preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setPreviewImage(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file || !merchant) return;
+    if (file) {
+      handleFileSelect(file);
+    }
+  };
+
+  const handleDrag = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      handleFileSelect(file);
+    }
+  };
+
+  const handleFileUpload = async (subId: string) => {
+    if (!selectedFile || !merchant) return;
 
     setUploading(true);
+    setUploadProgress(0);
     try {
-      const fileExt = file.name.split('.').pop();
+      const fileExt = selectedFile.name.split('.').pop();
       const fileName = `payment-proofs/${merchant.id}/${subId}-${Math.random()}.${fileExt}`;
       const filePath = fileName;
 
+      // Simulate progress
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => Math.min(prev + 30, 90));
+      }, 200);
+
       const { error: uploadError } = await supabase.storage
         .from('merchants')
-        .upload(filePath, file);
+        .upload(filePath, selectedFile);
+
+      clearInterval(progressInterval);
 
       if (uploadError) throw uploadError;
+
+      setUploadProgress(95);
 
       const { data: publicUrlData } = supabase.storage
         .from('merchants')
@@ -248,14 +325,30 @@ export default function MerchantSubscriptionPage() {
 
       if (updateError) throw updateError;
 
-      toast.success('Bukti pembayaran berhasil diunggah. Menunggu verifikasi admin.');
-      setPaymentDialogOpen(false);
-      fetchData();
+      setUploadProgress(100);
+      
+      setTimeout(() => {
+        toast.success('Bukti pembayaran berhasil diunggah. Menunggu verifikasi admin.');
+        setPaymentDialogOpen(false);
+        setPreviewImage(null);
+        setSelectedFile(null);
+        setUploadProgress(0);
+        fetchData();
+      }, 500);
     } catch (error) {
       console.error('Error uploading proof:', error);
       toast.error('Gagal mengunggah bukti pembayaran');
+      setUploadProgress(0);
     } finally {
       setUploading(false);
+    }
+  };
+
+  const clearPreview = () => {
+    setPreviewImage(null);
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -308,227 +401,234 @@ export default function MerchantSubscriptionPage() {
               </Badge>
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Penggunaan Kuota</span>
-                  <span className="font-medium">
-                    {currentSubscription.used_quota} / {currentSubscription.transaction_quota} Transaksi
-                  </span>
-                </div>
-                <Progress value={getQuotaPercentage(currentSubscription.used_quota, currentSubscription.transaction_quota)} className="h-2" />
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <p className="text-xs text-muted-foreground">Kuota Tersisa</p>
+                <p className="text-2xl font-bold text-primary">
+                  {currentSubscription.transaction_quota - currentSubscription.used_quota}
+                </p>
               </div>
-              
-              <div className="grid grid-cols-2 gap-4 pt-2">
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                  <div className="text-xs">
-                    <p className="text-muted-foreground">Berakhir pada</p>
-                    <p className="font-medium">{new Date(currentSubscription.expired_at).toLocaleDateString('id-ID')}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                  <div className="text-xs">
-                    <p className="text-muted-foreground">Sisa Kuota</p>
-                    <p className="font-medium">{currentSubscription.transaction_quota - currentSubscription.used_quota} Transaksi</p>
-                  </div>
-                </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Total Kuota</p>
+                <p className="text-2xl font-bold">{currentSubscription.transaction_quota}</p>
               </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Digunakan</p>
+                <p className="text-2xl font-bold text-orange-600">{currentSubscription.used_quota}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Berakhir</p>
+                <p className="text-sm font-bold">
+                  {new Date(currentSubscription.expired_at).toLocaleDateString('id-ID')}
+                </p>
+              </div>
+            </div>
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <p className="text-sm font-medium">Penggunaan Kuota</p>
+                <p className="text-xs text-muted-foreground">
+                  {getQuotaPercentage(currentSubscription.used_quota, currentSubscription.transaction_quota).toFixed(0)}%
+                </p>
+              </div>
+              <Progress 
+                value={getQuotaPercentage(currentSubscription.used_quota, currentSubscription.transaction_quota)} 
+                className="h-2"
+              />
             </div>
           </CardContent>
         </Card>
       ) : (
-        <Alert className="mb-6 border-yellow-200 bg-yellow-50">
-          <AlertTriangle className="h-4 w-4 text-yellow-600" />
-          <AlertTitle className="text-yellow-800">Kuota Tidak Aktif</AlertTitle>
-          <AlertDescription className="text-yellow-700">
-            Anda belum memiliki paket kuota aktif. Toko Anda tidak dapat menerima pesanan baru hingga Anda membeli paket.
-          </AlertDescription>
-        </Alert>
+        <Card className="mb-6 border-dashed">
+          <CardContent className="py-8">
+            <div className="text-center">
+              <Package className="h-12 w-12 mx-auto mb-3 text-muted-foreground opacity-50" />
+              <p className="text-muted-foreground mb-4">Anda belum memiliki paket kuota aktif</p>
+              <Button onClick={() => setBuyDialogOpen(true)}>
+                Beli Paket Kuota
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Available Packages */}
-      <div className="mb-8">
-        <h3 className="text-lg font-semibold mb-4">Pilih Paket Kuota</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {availablePackages.map((pkg) => (
-            <Card key={pkg.id} className="relative overflow-hidden border-border hover:border-primary/50 transition-colors">
-              <CardHeader>
-                <CardTitle className="text-lg">{pkg.name}</CardTitle>
-                <div className="mt-2">
-                  <span className="text-3xl font-bold text-primary">{formatPrice(pkg.price_per_transaction)}</span>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <ul className="space-y-2 text-sm">
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    <span>{pkg.transaction_quota} Kuota Transaksi</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    <span>Aktif selama {pkg.validity_days} hari</span>
-                  </li>
-                  {pkg.description && (
-                    <li className="flex items-start gap-2">
-                      <Info className="h-4 w-4 text-blue-500 mt-0.5" />
-                      <span className="text-muted-foreground">{pkg.description}</span>
-                    </li>
-                  )}
-                </ul>
-                <Button 
-                  className="w-full" 
-                  onClick={() => {
-                    setSelectedPackage(pkg);
-                    setBuyDialogOpen(true);
-                  }}
-                >
-                  Beli Sekarang
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CreditCard className="h-5 w-5" />
+            Paket Kuota Tersedia
+          </CardTitle>
+          <CardDescription>
+            Pilih paket yang sesuai dengan kebutuhan bisnis Anda
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {availablePackages.map((pkg) => (
+              <Card key={pkg.id} className="border-2 hover:border-primary/50 transition-colors cursor-pointer" onClick={() => {
+                setSelectedPackage(pkg);
+                setBuyDialogOpen(true);
+              }}>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg">{pkg.name}</CardTitle>
+                  <p className="text-sm text-muted-foreground">{pkg.transaction_quota} transaksi</p>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Harga Total</p>
+                    <p className="text-2xl font-bold text-primary">{formatPrice(pkg.price_per_transaction)}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <p className="text-muted-foreground">Validitas</p>
+                      <p className="font-medium">{pkg.validity_days} hari</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Komisi</p>
+                      <p className="font-medium">{pkg.group_commission_percent}%</p>
+                    </div>
+                  </div>
+                  <Button className="w-full" size="sm">Pilih Paket</Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Subscription History */}
-      <div>
-        <h3 className="text-lg font-semibold mb-4">Riwayat Pembelian</h3>
+      {subscriptionHistory.length > 0 && (
         <Card>
-          <CardContent className="p-0">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5" />
+              Riwayat Pembelian
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b bg-secondary/20">
-                    <th className="text-left py-3 px-4">Tanggal</th>
-                    <th className="text-left py-3 px-4">Paket</th>
-                    <th className="text-left py-3 px-4">Jumlah</th>
-                    <th className="text-left py-3 px-4">Status Bayar</th>
-                    <th className="text-right py-3 px-4">Aksi</th>
+                  <tr className="border-b">
+                    <th className="text-left py-3 px-2 font-medium">Paket</th>
+                    <th className="text-left py-3 px-2 font-medium">Kuota</th>
+                    <th className="text-left py-3 px-2 font-medium">Harga</th>
+                    <th className="text-left py-3 px-2 font-medium">Status</th>
+                    <th className="text-left py-3 px-2 font-medium">Tanggal</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {subscriptionHistory.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="text-center py-8 text-muted-foreground">
-                        Belum ada riwayat pembelian
-                      </td>
+                  {subscriptionHistory.map((sub) => (
+                    <tr key={sub.id} className="border-b hover:bg-muted/50">
+                      <td className="py-3 px-2">{sub.package.name}</td>
+                      <td className="py-3 px-2">{sub.transaction_quota}</td>
+                      <td className="py-3 px-2">{formatPrice(sub.payment_amount)}</td>
+                      <td className="py-3 px-2">{getPaymentStatusBadge(sub.payment_status)}</td>
+                      <td className="py-3 px-2">{new Date(sub.created_at).toLocaleDateString('id-ID')}</td>
                     </tr>
-                  ) : (
-                    subscriptionHistory.map((sub) => (
-                      <tr key={sub.id} className="border-b hover:bg-secondary/10">
-                        <td className="py-3 px-4">{new Date(sub.created_at).toLocaleDateString('id-ID')}</td>
-                        <td className="py-3 px-4 font-medium">{sub.package?.name}</td>
-                        <td className="py-3 px-4">{formatPrice(sub.payment_amount)}</td>
-                        <td className="py-3 px-4">
-                          <div className="flex flex-col gap-1">
-                            {getPaymentStatusBadge(sub.payment_status)}
-                            {sub.payment_status === 'REJECTED' && sub.admin_notes && (
-                              <span className="text-[10px] text-red-500 italic max-w-[150px] truncate" title={sub.admin_notes}>
-                                Ket: {sub.admin_notes}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          {sub.payment_status === 'UNPAID' && (
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              onClick={() => {
-                                setPendingSubscription(sub);
-                                setPaymentDialogOpen(true);
-                              }}
-                            >
-                              Bayar
-                            </Button>
-                          )}
-                          {(sub.payment_status === 'PENDING_APPROVAL' || sub.payment_status === 'PAID' || sub.payment_status === 'REJECTED') && (
-                            <Button 
-                              size="sm" 
-                              variant="ghost"
-                              onClick={() => {
-                                setPendingSubscription(sub);
-                                setPaymentDialogOpen(true);
-                              }}
-                            >
-                              Detail
-                            </Button>
-                          )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
+                  ))}
                 </tbody>
               </table>
             </div>
           </CardContent>
         </Card>
-      </div>
+      )}
 
-      {/* Buy Dialog */}
+      {/* Buy Package Dialog */}
       <Dialog open={buyDialogOpen} onOpenChange={setBuyDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Konfirmasi Pembelian</DialogTitle>
+            <DialogTitle>Konfirmasi Pembelian Paket</DialogTitle>
           </DialogHeader>
           {selectedPackage && (
-            <div className="py-4 space-y-4">
-              <div className="p-4 bg-primary/5 rounded-lg border border-primary/10">
-                <p className="text-sm text-muted-foreground">Paket yang dipilih:</p>
+            <div className="space-y-4">
+              <div className="bg-primary/5 p-4 rounded-lg border border-primary/20">
+                <p className="text-sm text-muted-foreground mb-1">Paket Dipilih</p>
                 <p className="text-lg font-bold">{selectedPackage.name}</p>
-                <div className="mt-2 flex justify-between items-center">
-                  <span className="text-sm">Total Pembayaran:</span>
-                  <span className="text-xl font-bold text-primary">{formatPrice(selectedPackage.price_per_transaction)}</span>
+                <div className="grid grid-cols-2 gap-4 mt-3 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Kuota Transaksi</p>
+                    <p className="font-bold text-primary">{selectedPackage.transaction_quota}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Validitas</p>
+                    <p className="font-bold">{selectedPackage.validity_days} hari</p>
+                  </div>
                 </div>
               </div>
-              <p className="text-sm text-muted-foreground">
-                Setelah klik konfirmasi, Anda akan diarahkan untuk melakukan pembayaran transfer manual dan mengunggah bukti bayar.
-              </p>
+
+              <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                <p className="text-sm text-muted-foreground mb-1">Total Pembayaran</p>
+                <p className="text-3xl font-bold text-green-600">{formatPrice(selectedPackage.price_per_transaction)}</p>
+              </div>
+
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertDescription>
+                  Setelah mengklik Lanjutkan, Anda akan diminta untuk mengunggah bukti pembayaran.
+                </AlertDescription>
+              </Alert>
             </div>
           )}
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setBuyDialogOpen(false)}>Batal</Button>
             <Button onClick={handleBuyPackage} disabled={purchasing}>
-              {purchasing ? 'Memproses...' : 'Konfirmasi Pembelian'}
+              {purchasing ? 'Memproses...' : 'Lanjutkan'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Payment Dialog */}
+      {/* Payment Dialog - IMPROVED */}
       <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Detail Pembayaran & Bukti</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5" />
+              Detail Pembayaran & Bukti
+            </DialogTitle>
           </DialogHeader>
           {pendingSubscription && (
-            <div className="py-4 space-y-6">
-              <div className="text-center">
-                <p className="text-sm text-muted-foreground">Total yang harus dibayar:</p>
-                <p className="text-3xl font-bold text-primary">{formatPrice(pendingSubscription.payment_amount)}</p>
+            <div className="space-y-6">
+              {/* Payment Amount */}
+              <div className="bg-gradient-to-r from-primary/10 to-primary/5 p-6 rounded-lg border border-primary/20">
+                <p className="text-sm text-muted-foreground mb-2">Total yang harus dibayar</p>
+                <p className="text-4xl font-bold text-primary">{formatPrice(pendingSubscription.payment_amount)}</p>
               </div>
 
+              {/* Payment Methods */}
               {paymentSettings ? (
-                <div className="space-y-4 p-4 bg-secondary/30 rounded-lg border border-border">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium">Metode: Transfer Bank</span>
-                    <Badge variant="outline">{paymentSettings.bank_name}</Badge>
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-sm">Metode Pembayaran</h3>
+                  
+                  {/* Bank Transfer */}
+                  <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <p className="text-sm font-medium text-slate-900">Transfer Bank</p>
+                        <Badge variant="outline" className="mt-1">{paymentSettings.bank_name}</Badge>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="bg-white p-3 rounded border border-slate-200">
+                        <p className="text-xs text-slate-600 mb-1">Nomor Rekening</p>
+                        <p className="text-lg font-mono font-bold text-slate-900 tracking-wider">{paymentSettings.account_number}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-600 mb-1">Nama Penerima</p>
+                        <p className="font-medium text-slate-900">{paymentSettings.account_name}</p>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Nomor Rekening:</p>
-                    <p className="text-lg font-mono font-bold tracking-wider">{paymentSettings.account_number}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Nama Penerima:</p>
-                    <p className="font-medium">{paymentSettings.account_name}</p>
-                  </div>
+
+                  {/* QRIS */}
                   {paymentSettings.qris_url && (
-                    <div className="pt-2 border-t">
-                      <p className="text-xs text-muted-foreground mb-2">Atau Scan QRIS:</p>
-                      <img src={paymentSettings.qris_url} alt="QRIS" className="w-48 h-48 mx-auto border p-2 bg-white rounded" />
+                    <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                      <p className="text-sm font-medium text-slate-900 mb-3">Atau Scan QRIS</p>
+                      <div className="flex justify-center bg-white p-4 rounded border border-slate-200">
+                        <img src={paymentSettings.qris_url} alt="QRIS" className="w-40 h-40 object-contain" />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -541,8 +641,9 @@ export default function MerchantSubscriptionPage() {
                 </Alert>
               )}
 
+              {/* Rejection Alert */}
               {pendingSubscription.payment_status === 'REJECTED' && (
-                <Alert variant="destructive" className="bg-red-50">
+                <Alert variant="destructive" className="bg-red-50 border-red-200">
                   <XCircle className="h-4 w-4" />
                   <AlertTitle>Pembayaran Ditolak</AlertTitle>
                   <AlertDescription>
@@ -551,11 +652,54 @@ export default function MerchantSubscriptionPage() {
                 </Alert>
               )}
 
-              <div className="space-y-3">
-                <Label>Bukti Pembayaran</Label>
-                {pendingSubscription.payment_proof_url ? (
+              {/* Pending Alert */}
+              {pendingSubscription.payment_status === 'PENDING_APPROVAL' && (
+                <Alert className="bg-yellow-50 border-yellow-200">
+                  <Clock className="h-4 w-4 text-yellow-600" />
+                  <AlertTitle className="text-yellow-800">Menunggu Verifikasi</AlertTitle>
+                  <AlertDescription className="text-yellow-700">
+                    Bukti pembayaran Anda sedang diverifikasi oleh admin. Proses ini biasanya memakan waktu 1-24 jam.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {/* Payment Proof Upload Section */}
+              <div className="space-y-4 border-t pt-4">
+                <h3 className="font-semibold text-sm">Bukti Pembayaran</h3>
+                
+                {pendingSubscription.payment_proof_url && pendingSubscription.payment_status === 'PENDING_APPROVAL' ? (
+                  // Show uploaded proof with success state
                   <div className="space-y-3">
-                    <div className="relative aspect-video border rounded-lg overflow-hidden bg-black/5 group">
+                    <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                      <FileCheck className="h-5 w-5 text-green-600" />
+                      <div>
+                        <p className="text-sm font-medium text-green-900">Bukti pembayaran berhasil diunggah</p>
+                        <p className="text-xs text-green-700">Menunggu verifikasi admin</p>
+                      </div>
+                    </div>
+                    <div className="relative aspect-video border-2 border-green-200 rounded-lg overflow-hidden bg-black/5 group">
+                      <img 
+                        src={pendingSubscription.payment_proof_url} 
+                        alt="Bukti Bayar" 
+                        className="w-full h-full object-contain"
+                      />
+                      <a 
+                        href={pendingSubscription.payment_proof_url} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                      >
+                        <Button variant="secondary" size="sm">
+                          <ExternalLink className="h-4 w-4 mr-2" />
+                          Lihat Full
+                        </Button>
+                      </a>
+                    </div>
+                  </div>
+                ) : pendingSubscription.payment_proof_url ? (
+                  // Show uploaded proof with option to replace
+                  <div className="space-y-3">
+                    <div className="relative aspect-video border-2 border-slate-200 rounded-lg overflow-hidden bg-black/5 group">
                       <img 
                         src={pendingSubscription.payment_proof_url} 
                         alt="Bukti Bayar" 
@@ -576,34 +720,119 @@ export default function MerchantSubscriptionPage() {
                     {(pendingSubscription.payment_status === 'UNPAID' || pendingSubscription.payment_status === 'REJECTED') && (
                       <div className="flex flex-col gap-2">
                         <p className="text-xs text-muted-foreground">Ingin mengganti bukti pembayaran?</p>
-                        <Input 
-                          type="file" 
-                          accept="image/*" 
-                          onChange={(e) => handleFileUpload(e, pendingSubscription.id)}
-                          disabled={uploading}
-                        />
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => fileInputRef.current?.click()}
+                        >
+                          Pilih File Lain
+                        </Button>
                       </div>
                     )}
                   </div>
-                ) : (
+                ) : previewImage ? (
+                  // Show preview before upload
                   <div className="space-y-4">
-                    <div className="border-2 border-dashed rounded-lg p-8 text-center bg-secondary/10">
-                      <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground opacity-50" />
-                      <p className="text-sm text-muted-foreground">Unggah foto bukti transfer Anda di sini</p>
+                    <div className="relative aspect-video border-2 border-blue-300 rounded-lg overflow-hidden bg-blue-50">
+                      <img 
+                        src={previewImage} 
+                        alt="Preview" 
+                        className="w-full h-full object-contain"
+                      />
+                      <button
+                        onClick={clearPreview}
+                        className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1 transition-colors"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
                     </div>
-                    <Input 
-                      type="file" 
-                      accept="image/*" 
-                      onChange={(e) => handleFileUpload(e, pendingSubscription.id)}
+                    
+                    <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+                      <p className="text-sm text-blue-900">
+                        <strong>File:</strong> {selectedFile?.name}
+                      </p>
+                      <p className="text-xs text-blue-700 mt-1">
+                        <strong>Ukuran:</strong> {((selectedFile?.size || 0) / 1024 / 1024).toFixed(2)} MB
+                      </p>
+                    </div>
+
+                    {uploading && (
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <p className="text-xs font-medium">Mengunggah...</p>
+                          <p className="text-xs font-bold text-primary">{uploadProgress}%</p>
+                        </div>
+                        <Progress value={uploadProgress} className="h-2" />
+                      </div>
+                    )}
+
+                    <Button 
+                      onClick={() => handleFileUpload(pendingSubscription.id)}
                       disabled={uploading}
+                      className="w-full"
+                    >
+                      {uploading ? `Mengunggah ${uploadProgress}%...` : 'Unggah Bukti Pembayaran'}
+                    </Button>
+                  </div>
+                ) : (
+                  // Drag and drop area
+                  <div 
+                    onDragEnter={handleDrag}
+                    onDragLeave={handleDrag}
+                    onDragOver={handleDrag}
+                    onDrop={handleDrop}
+                    className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+                      dragActive 
+                        ? 'border-primary bg-primary/5' 
+                        : 'border-slate-300 bg-slate-50 hover:border-slate-400'
+                    }`}
+                  >
+                    <Upload className="h-10 w-10 mx-auto mb-3 text-slate-400" />
+                    <p className="text-sm font-medium text-slate-900 mb-1">Drag & drop bukti pembayaran di sini</p>
+                    <p className="text-xs text-slate-600 mb-4">atau klik untuk memilih file</p>
+                    <p className="text-xs text-slate-500 mb-4">JPG, PNG, WebP, atau PDF (Max 5MB)</p>
+                    <Input 
+                      ref={fileInputRef}
+                      type="file" 
+                      accept="image/jpeg,image/png,image/webp,application/pdf" 
+                      onChange={handleInputChange}
+                      disabled={uploading}
+                      className="hidden"
                     />
+                    <Button 
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                    >
+                      Pilih File
+                    </Button>
                   </div>
                 )}
               </div>
+
+              {/* Info Alert */}
+              <Alert className="bg-blue-50 border-blue-200">
+                <Info className="h-4 w-4 text-blue-600" />
+                <AlertTitle className="text-blue-900">Tips Mengambil Bukti Pembayaran</AlertTitle>
+                <AlertDescription className="text-blue-800 text-xs space-y-1 mt-2">
+                  <p>• Pastikan bukti transfer jelas dan terlihat semua informasi penting</p>
+                  <p>• Sertakan nama pengirim, jumlah, dan tanggal transfer</p>
+                  <p>• Gunakan foto dengan pencahayaan yang baik</p>
+                  <p>• File harus dalam format JPG, PNG, WebP, atau PDF</p>
+                </AlertDescription>
+              </Alert>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" className="w-full" onClick={() => setPaymentDialogOpen(false)}>Tutup</Button>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setPaymentDialogOpen(false);
+                clearPreview();
+              }}
+            >
+              Tutup
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
