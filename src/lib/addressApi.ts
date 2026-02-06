@@ -15,27 +15,42 @@ interface WilayahResponse {
   };
 }
 
-// In-memory cache for API responses
-const cache: Map<string, { data: Region[]; timestamp: number }> = new Map();
-const CACHE_DURATION = 60 * 60 * 1000; // 1 hour
+// Persistent cache using localStorage
+const CACHE_PREFIX = 'address_cache_';
+const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours for address data
 
 function getCacheKey(type: string, code?: string): string {
   return code ? `${type}-${code}` : type;
 }
 
 function getFromCache(key: string): Region[] | null {
-  const cached = cache.get(key);
-  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-    return cached.data;
+  try {
+    const cached = localStorage.getItem(CACHE_PREFIX + key);
+    if (cached) {
+      const { data, timestamp } = JSON.parse(cached);
+      if (Date.now() - timestamp < CACHE_DURATION) {
+        return data;
+      }
+      localStorage.removeItem(CACHE_PREFIX + key);
+    }
+  } catch (e) {
+    console.warn('Cache read error:', e);
   }
   return null;
 }
 
 function setCache(key: string, data: Region[]): void {
-  cache.set(key, { data, timestamp: Date.now() });
+  try {
+    localStorage.setItem(CACHE_PREFIX + key, JSON.stringify({
+      data,
+      timestamp: Date.now()
+    }));
+  } catch (e) {
+    console.warn('Cache write error:', e);
+  }
 }
 
-// Static fallback data for provinces (in case all APIs fail)
+// Static fallback data for provinces
 const STATIC_PROVINCES: Region[] = [
   { code: "11", name: "Aceh" },
   { code: "12", name: "Sumatera Utara" },
@@ -79,7 +94,6 @@ const STATIC_PROVINCES: Region[] = [
 
 const BASE_URL = 'https://wilayah.id/api';
 
-// Try fetching directly first (some browsers/networks allow it)
 async function fetchDirect(url: string): Promise<Response | null> {
   try {
     const controller = new AbortController();
@@ -91,18 +105,13 @@ async function fetchDirect(url: string): Promise<Response | null> {
     });
     
     clearTimeout(timeoutId);
-    
-    if (response.ok) {
-      return response;
-    }
-    console.warn(`Direct fetch failed with status: ${response.status}`);
+    if (response.ok) return response;
   } catch (error) {
     console.warn('Direct fetch failed:', error);
   }
   return null;
 }
 
-// Try using Edge Function proxy
 async function fetchViaEdgeFunction(type: string, code?: string): Promise<Response | null> {
   try {
     const projectUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -114,7 +123,7 @@ async function fetchViaEdgeFunction(type: string, code?: string): Promise<Respon
     if (code) params.append('code', code);
     
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
     
     const response = await fetch(`${projectUrl}/functions/v1/wilayah-proxy?${params.toString()}`, {
       headers: {
@@ -125,22 +134,17 @@ async function fetchViaEdgeFunction(type: string, code?: string): Promise<Respon
     });
     
     clearTimeout(timeoutId);
-    
-    if (response.ok) {
-      return response;
-    }
-    console.warn(`Proxy fetch failed with status: ${response.status}`);
+    if (response.ok) return response;
   } catch (error) {
     console.warn('Proxy fetch failed:', error);
   }
   return null;
 }
 
-// Try using public CORS proxy (allorigins.win)
 async function fetchViaCorsProxy(url: string): Promise<Response | null> {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
     
     const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
     const response = await fetch(proxyUrl, {
@@ -148,57 +152,30 @@ async function fetchViaCorsProxy(url: string): Promise<Response | null> {
     });
     
     clearTimeout(timeoutId);
-    
-    if (response.ok) {
-      return response;
-    }
-    console.warn(`Proxy fetch failed with status: ${response.status}`);
+    if (response.ok) return response;
   } catch (error) {
-    console.warn('Proxy fetch failed:', error);
+    console.warn('CORS proxy fetch failed:', error);
   }
   return null;
 }
 
-// Main fetch function with multiple fallbacks
 async function fetchWithFallbacks(type: string, code?: string): Promise<Region[]> {
   let url: string;
-  
   switch (type) {
-    case 'provinces':
-      url = `${BASE_URL}/provinces.json`;
-      break;
-    case 'regencies':
-      url = `${BASE_URL}/regencies/${code}.json`;
-      break;
-    case 'districts':
-      url = `${BASE_URL}/districts/${code}.json`;
-      break;
-    case 'villages':
-      url = `${BASE_URL}/villages/${code}.json`;
-      break;
-    default:
-      return [];
+    case 'provinces': url = `${BASE_URL}/provinces.json`; break;
+    case 'regencies': url = `${BASE_URL}/regencies/${code}.json`; break;
+    case 'districts': url = `${BASE_URL}/districts/${code}.json`; break;
+    case 'villages': url = `${BASE_URL}/villages/${code}.json`; break;
+    default: return [];
   }
 
-  // Strategy 1: Try direct fetch
+  // Try direct -> Edge Function -> CORS Proxy
   let response = await fetchDirect(url);
-  
-  // Strategy 2: Try Edge Function
-  if (!response) {
-    response = await fetchViaEdgeFunction(type, code);
-  }
-  
-  // Strategy 3: Try CORS proxy
-  if (!response) {
-    response = await fetchViaCorsProxy(url);
-  }
+  if (!response) response = await fetchViaEdgeFunction(type, code);
+  if (!response) response = await fetchViaCorsProxy(url);
 
-  // If all strategies fail, use static data for provinces
   if (!response) {
-    if (type === 'provinces') {
-      console.log('Using static provinces data');
-      return STATIC_PROVINCES;
-    }
+    if (type === 'provinces') return STATIC_PROVINCES;
     throw new Error('All fetch strategies failed');
   }
 
@@ -213,29 +190,23 @@ export async function fetchProvinces(): Promise<Region[]> {
 
   try {
     const data = await fetchWithFallbacks('provinces');
-    if (data.length > 0) {
-      setCache(cacheKey, data);
-    }
+    if (data.length > 0) setCache(cacheKey, data);
     return data;
   } catch (error) {
     console.error('Error fetching provinces:', error);
-    // Return static fallback
     return STATIC_PROVINCES;
   }
 }
 
 export async function fetchRegencies(provinceCode: string): Promise<Region[]> {
   if (!provinceCode) return [];
-  
   const cacheKey = getCacheKey('regencies', provinceCode);
   const cached = getFromCache(cacheKey);
   if (cached) return cached;
 
   try {
     const data = await fetchWithFallbacks('regencies', provinceCode);
-    if (data.length > 0) {
-      setCache(cacheKey, data);
-    }
+    if (data.length > 0) setCache(cacheKey, data);
     return data;
   } catch (error) {
     console.error('Error fetching regencies:', error);
@@ -245,16 +216,13 @@ export async function fetchRegencies(provinceCode: string): Promise<Region[]> {
 
 export async function fetchDistricts(regencyCode: string): Promise<Region[]> {
   if (!regencyCode) return [];
-  
   const cacheKey = getCacheKey('districts', regencyCode);
   const cached = getFromCache(cacheKey);
   if (cached) return cached;
 
   try {
     const data = await fetchWithFallbacks('districts', regencyCode);
-    if (data.length > 0) {
-      setCache(cacheKey, data);
-    }
+    if (data.length > 0) setCache(cacheKey, data);
     return data;
   } catch (error) {
     console.error('Error fetching districts:', error);
@@ -264,16 +232,13 @@ export async function fetchDistricts(regencyCode: string): Promise<Region[]> {
 
 export async function fetchVillages(districtCode: string): Promise<Region[]> {
   if (!districtCode) return [];
-  
   const cacheKey = getCacheKey('villages', districtCode);
   const cached = getFromCache(cacheKey);
   if (cached) return cached;
 
   try {
     const data = await fetchWithFallbacks('villages', districtCode);
-    if (data.length > 0) {
-      setCache(cacheKey, data);
-    }
+    if (data.length > 0) setCache(cacheKey, data);
     return data;
   } catch (error) {
     console.error('Error fetching villages:', error);
@@ -281,7 +246,6 @@ export async function fetchVillages(districtCode: string): Promise<Region[]> {
   }
 }
 
-// Helper to pre-load all levels at once (for editing existing addresses)
 export async function preloadAddressChain(
   provinceCode: string,
   cityCode: string,
@@ -302,7 +266,8 @@ export async function preloadAddressChain(
   return { provinces, cities, districts, villages };
 }
 
-// Clear the cache (useful for testing or forced refresh)
 export function clearAddressCache(): void {
-  cache.clear();
+  Object.keys(localStorage)
+    .filter(key => key.startsWith(CACHE_PREFIX))
+    .forEach(key => localStorage.removeItem(key));
 }

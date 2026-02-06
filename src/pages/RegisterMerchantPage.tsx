@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { 
   Store, Phone, MapPin, ArrowLeft, CheckCircle, Clock, 
-  Tag, FileText, Building, Shield, AlertCircle, Check, Mail
+  Tag, FileText, Building, Shield, AlertCircle, Check, Mail, Loader2
 } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { BottomNav } from '../components/layout/BottomNav';
@@ -87,6 +87,12 @@ export default function RegisterMerchantPage() {
   const [districtsList, setDistrictsList] = useState<Region[]>([]);
   const [subdistrictsList, setSubdistrictsList] = useState<Region[]>([]);
   
+  // Loading states for address dropdowns
+  const [loadingProvinces, setLoadingProvinces] = useState(false);
+  const [loadingCities, setLoadingCities] = useState(false);
+  const [loadingDistricts, setLoadingDistricts] = useState(false);
+  const [loadingSubdistricts, setLoadingSubdistricts] = useState(false);
+  
   const [matchedVillage, setMatchedVillage] = useState<Village | null>(null);
   const [villageLoading, setVillageLoading] = useState(false);
   const [merchantLocation, setMerchantLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -105,11 +111,15 @@ export default function RegisterMerchantPage() {
 
   useEffect(() => {
     const loadProvinces = async () => {
+      setLoadingProvinces(true);
       try {
         const data = await fetchProvinces();
         setProvincesList(data);
       } catch (error) {
         console.error('Error loading provinces:', error);
+        toast.error('Gagal memuat data provinsi');
+      } finally {
+        setLoadingProvinces(false);
       }
     };
     loadProvinces();
@@ -118,9 +128,11 @@ export default function RegisterMerchantPage() {
   useEffect(() => {
     const loadCities = async () => {
       if (selectedProvince) {
+        setLoadingCities(true);
         try {
           const data = await fetchRegencies(selectedProvince);
           setCities(data);
+          // Reset dependent fields
           setSelectedCity('');
           setSelectedDistrict('');
           setSelectedSubdistrict('');
@@ -129,7 +141,12 @@ export default function RegisterMerchantPage() {
           setValue('subdistrict', '');
         } catch (error) {
           console.error('Error loading cities:', error);
+          toast.error('Gagal memuat data kabupaten/kota');
+        } finally {
+          setLoadingCities(false);
         }
+      } else {
+        setCities([]);
       }
     };
     loadCities();
@@ -138,16 +155,23 @@ export default function RegisterMerchantPage() {
   useEffect(() => {
     const loadDistricts = async () => {
       if (selectedCity) {
+        setLoadingDistricts(true);
         try {
           const data = await fetchDistricts(selectedCity);
           setDistrictsList(data);
+          // Reset dependent fields
           setSelectedDistrict('');
           setSelectedSubdistrict('');
           setValue('district', '');
           setValue('subdistrict', '');
         } catch (error) {
           console.error('Error loading districts:', error);
+          toast.error('Gagal memuat data kecamatan');
+        } finally {
+          setLoadingDistricts(false);
         }
+      } else {
+        setDistrictsList([]);
       }
     };
     loadDistricts();
@@ -156,14 +180,21 @@ export default function RegisterMerchantPage() {
   useEffect(() => {
     const loadSubdistricts = async () => {
       if (selectedDistrict) {
+        setLoadingSubdistricts(true);
         try {
           const data = await fetchVillages(selectedDistrict);
           setSubdistrictsList(data);
+          // Reset dependent fields
           setSelectedSubdistrict('');
           setValue('subdistrict', '');
         } catch (error) {
           console.error('Error loading subdistricts:', error);
+          toast.error('Gagal memuat data kelurahan/desa');
+        } finally {
+          setLoadingSubdistricts(false);
         }
+      } else {
+        setSubdistrictsList([]);
       }
     };
     loadSubdistricts();
@@ -366,7 +397,7 @@ export default function RegisterMerchantPage() {
                 />
                 {referralInfo.isLoading && (
                   <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                    <Loader2 className="w-4 h-4 text-primary animate-spin" />
                   </div>
                 )}
                 {!referralInfo.isLoading && referralInfo.isValid && (
@@ -493,7 +524,10 @@ export default function RegisterMerchantPage() {
                   setValue('province', val);
                 }}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Pilih provinsi" />
+                    <div className="flex items-center gap-2">
+                      {loadingProvinces && <Loader2 className="w-3 h-3 animate-spin" />}
+                      <SelectValue placeholder="Pilih provinsi" />
+                    </div>
                   </SelectTrigger>
                   <SelectContent>
                     {provincesList.map((p) => (
@@ -507,7 +541,7 @@ export default function RegisterMerchantPage() {
               <div className="space-y-2">
                 <Label>Kabupaten/Kota</Label>
                 <Select 
-                  disabled={!selectedProvince}
+                  disabled={!selectedProvince || loadingCities}
                   onValueChange={(val) => {
                     setSelectedCity(val);
                     setValue('city', val);
@@ -515,7 +549,10 @@ export default function RegisterMerchantPage() {
                   value={selectedCity}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Pilih kabupaten/kota" />
+                    <div className="flex items-center gap-2">
+                      {loadingCities && <Loader2 className="w-3 h-3 animate-spin" />}
+                      <SelectValue placeholder={loadingCities ? "Memuat..." : "Pilih kabupaten/kota"} />
+                    </div>
                   </SelectTrigger>
                   <SelectContent>
                     {cities.map((c) => (
@@ -529,7 +566,7 @@ export default function RegisterMerchantPage() {
               <div className="space-y-2">
                 <Label>Kecamatan</Label>
                 <Select 
-                  disabled={!selectedCity}
+                  disabled={!selectedCity || loadingDistricts}
                   onValueChange={(val) => {
                     setSelectedDistrict(val);
                     setValue('district', val);
@@ -537,7 +574,10 @@ export default function RegisterMerchantPage() {
                   value={selectedDistrict}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Pilih kecamatan" />
+                    <div className="flex items-center gap-2">
+                      {loadingDistricts && <Loader2 className="w-3 h-3 animate-spin" />}
+                      <SelectValue placeholder={loadingDistricts ? "Memuat..." : "Pilih kecamatan"} />
+                    </div>
                   </SelectTrigger>
                   <SelectContent>
                     {districtsList.map((d) => (
@@ -551,7 +591,7 @@ export default function RegisterMerchantPage() {
               <div className="space-y-2">
                 <Label>Kelurahan/Desa</Label>
                 <Select 
-                  disabled={!selectedDistrict}
+                  disabled={!selectedDistrict || loadingSubdistricts}
                   onValueChange={(val) => {
                     setSelectedSubdistrict(val);
                     setValue('subdistrict', val);
@@ -559,7 +599,10 @@ export default function RegisterMerchantPage() {
                   value={selectedSubdistrict}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Pilih kelurahan/desa" />
+                    <div className="flex items-center gap-2">
+                      {loadingSubdistricts && <Loader2 className="w-3 h-3 animate-spin" />}
+                      <SelectValue placeholder={loadingSubdistricts ? "Memuat..." : "Pilih kelurahan/desa"} />
+                    </div>
                   </SelectTrigger>
                   <SelectContent>
                     {subdistrictsList.map((s) => (
@@ -616,7 +659,7 @@ export default function RegisterMerchantPage() {
             >
               {isSubmitting ? (
                 <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <Loader2 className="w-4 h-4 text-white animate-spin" />
                   Memproses...
                 </div>
               ) : (
