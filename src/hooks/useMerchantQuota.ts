@@ -10,6 +10,7 @@ export interface MerchantQuotaStatus {
   usedQuota: number;
   expiresAt: string | null;
   packageName: string | null;
+  type?: 'free' | 'premium';
 }
 
 export function useMerchantQuota(merchantIds: string[]) {
@@ -33,12 +34,12 @@ export function useMerchantQuota(merchantIds: string[]) {
           .from('merchants')
           .select('id, name')
           .eq('id', merchantId)
-          .single();
+          .maybeSingle();
 
         if (!merchant) continue;
 
         // Get active subscriptions
-        const { data: subscriptions } = await supabase
+        const { data: subscriptions, error: subError } = await supabase
           .from('merchant_subscriptions')
           .select(`
             transaction_quota,
@@ -52,6 +53,18 @@ export function useMerchantQuota(merchantIds: string[]) {
           .gte('expired_at', new Date().toISOString())
           .order('expired_at', { ascending: true });
 
+        // Calculate usage from orders table for current month as fallback/validation
+        const startOfMonth = new Date();
+        startOfMonth.setDate(1);
+        startOfMonth.setHours(0, 0, 0, 0);
+
+        const { count: ordersCount } = await supabase
+          .from('orders')
+          .select('*', { count: 'exact', head: true })
+          .eq('merchant_id', merchantId)
+          .gte('created_at', startOfMonth.toISOString());
+
+        const currentUsage = ordersCount || 0;
         let status: MerchantQuotaStatus;
 
         if (subscriptions && subscriptions.length > 0) {
@@ -73,17 +86,23 @@ export function useMerchantQuota(merchantIds: string[]) {
             usedQuota: usedQuota,
             expiresAt: firstSub.expired_at,
             packageName: pkg?.name || (subscriptions.length > 1 ? `${pkg?.name} (+${subscriptions.length - 1} paket)` : pkg?.name) || null,
+            type: 'premium'
           };
         } else {
+          // Fallback to Free Tier
+          const freeLimit = 100;
+          const remaining = Math.max(0, freeLimit - currentUsage);
+          
           status = {
             merchantId,
             merchantName: merchant.name,
-            canTransact: false,
-            remainingQuota: 0,
-            totalQuota: 0,
-            usedQuota: 0,
+            canTransact: remaining > 0,
+            remainingQuota: remaining,
+            totalQuota: freeLimit,
+            usedQuota: currentUsage,
             expiresAt: null,
-            packageName: null,
+            packageName: 'Free Tier',
+            type: 'free'
           };
         }
 
@@ -150,7 +169,7 @@ export async function notifyMerchantLowQuota(
       .from('merchants')
       .select('user_id, name')
       .eq('id', merchantId)
-      .single();
+      .maybeSingle();
 
     if (!merchant?.user_id) return;
 

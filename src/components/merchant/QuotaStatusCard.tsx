@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Package, AlertTriangle, CreditCard } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
+import { Package, AlertTriangle, CreditCard, ArrowUpCircle } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -15,6 +16,7 @@ interface QuotaStatus {
   usedQuota: number;
   expiresAt: string | null;
   packageName: string | null;
+  type: 'free' | 'premium';
 }
 
 export function QuotaStatusCard() {
@@ -54,6 +56,19 @@ export function QuotaStatusCard() {
           .gte('expired_at', new Date().toISOString())
           .order('expired_at', { ascending: true });
 
+        // Calculate usage from orders table for current month
+        const startOfMonth = new Date();
+        startOfMonth.setDate(1);
+        startOfMonth.setHours(0, 0, 0, 0);
+
+        const { count: ordersCount } = await supabase
+          .from('orders')
+          .select('*', { count: 'exact', head: true })
+          .eq('merchant_id', merchant.id)
+          .gte('created_at', startOfMonth.toISOString());
+
+        const currentUsage = ordersCount || 0;
+
         if (subscriptions && subscriptions.length > 0) {
           const totalQuota = subscriptions.reduce((sum, sub) => sum + sub.transaction_quota, 0);
           const usedQuota = subscriptions.reduce((sum, sub) => sum + sub.used_quota, 0);
@@ -62,20 +77,24 @@ export function QuotaStatusCard() {
           
           setStatus({
             hasActiveSubscription: true,
-            remainingQuota: totalQuota - usedQuota,
+            remainingQuota: Math.max(0, totalQuota - usedQuota),
             totalQuota: totalQuota,
             usedQuota: usedQuota,
             expiresAt: firstSub.expired_at,
-            packageName: pkg?.name || (subscriptions.length > 1 ? `${pkg?.name} (+${subscriptions.length - 1})` : pkg?.name) || null,
+            packageName: pkg?.name || (subscriptions.length > 1 ? `${pkg?.name} (+${subscriptions.length - 1})` : pkg?.name) || 'Premium',
+            type: 'premium'
           });
         } else {
+          // Fallback to Free Tier
+          const freeLimit = 100;
           setStatus({
             hasActiveSubscription: false,
-            remainingQuota: 0,
-            totalQuota: 0,
-            usedQuota: 0,
+            remainingQuota: Math.max(0, freeLimit - currentUsage),
+            totalQuota: freeLimit,
+            usedQuota: currentUsage,
             expiresAt: null,
-            packageName: null,
+            packageName: 'Free Tier',
+            type: 'free'
           });
         }
       } catch (error) {
@@ -91,8 +110,13 @@ export function QuotaStatusCard() {
   if (loading) {
     return (
       <Card>
-        <CardContent className="pt-6">
-          <div className="animate-pulse h-20 bg-muted rounded" />
+        <CardHeader className="pb-2">
+          <Skeleton className="h-5 w-32" />
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-4 w-full mb-4" />
+          <Skeleton className="h-8 w-full mb-2" />
+          <Skeleton className="h-10 w-full" />
         </CardContent>
       </Card>
     );
@@ -100,70 +124,81 @@ export function QuotaStatusCard() {
 
   if (!status) return null;
 
-  const quotaPercentage = status.totalQuota > 0 
+  const usagePercentage = status.totalQuota > 0 
     ? (status.usedQuota / status.totalQuota) * 100 
     : 100;
 
-  const isLow = status.remainingQuota <= 10 && status.remainingQuota > 0;
-  const isEmpty = status.remainingQuota <= 0;
+  const isCritical = usagePercentage >= 90 || status.remainingQuota <= 0;
+  const isWarning = usagePercentage >= 75 && !isCritical;
+  
+  const getProgressColor = () => {
+    if (isCritical) return 'bg-destructive';
+    if (isWarning) return 'bg-yellow-500';
+    return 'bg-primary';
+  };
 
   return (
-    <Card className={isEmpty ? 'border-destructive/50 bg-destructive/5' : isLow ? 'border-warning/50 bg-warning/5' : ''}>
-      <CardContent className="pt-6">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Package className="h-5 w-5 text-primary" />
-            <span className="font-semibold">Kuota Transaksi</span>
-          </div>
-          {status.hasActiveSubscription ? (
-            <Badge variant={isEmpty ? 'destructive' : isLow ? 'secondary' : 'default'}>
-              {status.packageName}
-            </Badge>
-          ) : (
-            <Badge variant="destructive">Tidak Aktif</Badge>
-          )}
-        </div>
-
-        {status.hasActiveSubscription ? (
-          <>
-            <div className="flex justify-between text-sm mb-2">
-              <span className="text-muted-foreground">Sisa Kuota</span>
-              <span className="font-medium">
-                {status.remainingQuota} / {status.totalQuota}
+    <Card className={isCritical ? 'border-destructive/50 shadow-sm' : ''}>
+      <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <Package className="h-4 w-4 text-muted-foreground" />
+          Kuota Transaksi
+        </CardTitle>
+        <Badge variant={status.type === 'premium' ? 'default' : 'secondary'}>
+          {status.packageName}
+        </Badge>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">
+                {isCritical ? 'Kuota Hampir Habis!' : 'Penggunaan Kuota'}
+              </span>
+              <span className="font-bold">
+                {status.usedQuota} / {status.totalQuota}
               </span>
             </div>
-            <Progress value={quotaPercentage} className="h-2 mb-3" />
-            
-            {isEmpty && (
-              <div className="flex items-center gap-2 text-destructive text-sm mb-3">
-                <AlertTriangle className="h-4 w-4" />
-                <span>Kuota habis! Anda tidak dapat menerima pesanan baru.</span>
-              </div>
-            )}
-            
-            {isLow && !isEmpty && (
-              <div className="flex items-center gap-2 text-warning text-sm mb-3">
-                <AlertTriangle className="h-4 w-4" />
-                <span>Kuota hampir habis. Segera perpanjang!</span>
-              </div>
-            )}
-          </>
-        ) : (
-          <div className="flex items-center gap-2 text-destructive text-sm mb-3">
-            <AlertTriangle className="h-4 w-4" />
-            <span>Tidak ada kuota aktif. Beli paket untuk menerima pesanan.</span>
+            <Progress 
+              value={usagePercentage} 
+              className="h-2" 
+              indicatorClassName={getProgressColor()}
+            />
+            <p className="text-xs text-right text-muted-foreground font-medium">
+              Sisa: {status.remainingQuota} transaksi
+            </p>
           </div>
-        )}
 
-        <Button 
-          variant={isEmpty || !status.hasActiveSubscription ? 'default' : 'outline'} 
-          size="sm" 
-          className="w-full"
-          onClick={() => navigate('/merchant/subscription')}
-        >
-          <CreditCard className="h-4 w-4 mr-2" />
-          {status.hasActiveSubscription ? 'Kelola Kuota' : 'Beli Paket'}
-        </Button>
+          {(isCritical || isWarning) && (
+            <div className={`flex items-start gap-2 p-2 rounded-md text-xs ${isCritical ? 'bg-destructive/10 text-destructive' : 'bg-yellow-500/10 text-yellow-700'}`}>
+              <AlertTriangle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+              <p>
+                {status.remainingQuota <= 0 
+                  ? 'Kuota habis! Toko Anda tidak dapat menerima pesanan baru.' 
+                  : `Kuota menipis (${status.remainingQuota} tersisa). Segera upgrade untuk menghindari gangguan.`}
+              </p>
+            </div>
+          )}
+
+          <Button 
+            variant={isCritical ? 'destructive' : 'outline'} 
+            size="sm" 
+            className="w-full"
+            onClick={() => navigate('/merchant/subscription')}
+          >
+            {isCritical || isWarning || status.type === 'free' ? (
+              <>
+                <ArrowUpCircle className="h-4 w-4 mr-2" />
+                Upgrade Paket
+              </>
+            ) : (
+              <>
+                <CreditCard className="h-4 w-4 mr-2" />
+                Kelola Langganan
+              </>
+            )}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );

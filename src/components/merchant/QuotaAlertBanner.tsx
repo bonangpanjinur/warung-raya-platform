@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, XCircle, CreditCard } from 'lucide-react';
+import { AlertTriangle, CreditCard, ArrowRight } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface QuotaStatus {
-  hasActiveSubscription: boolean;
   remainingQuota: number;
   totalQuota: number;
+  usedQuota: number;
 }
 
 export function QuotaAlertBanner() {
@@ -17,7 +17,6 @@ export function QuotaAlertBanner() {
   const { user } = useAuth();
   const [status, setStatus] = useState<QuotaStatus | null>(null);
   const [loading, setLoading] = useState(true);
-  const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
     const fetchQuotaStatus = async () => {
@@ -42,23 +41,38 @@ export function QuotaAlertBanner() {
           .eq('status', 'ACTIVE')
           .gte('expired_at', new Date().toISOString());
 
+        // Calculate usage from orders table for current month as fallback
+        const startOfMonth = new Date();
+        startOfMonth.setDate(1);
+        startOfMonth.setHours(0, 0, 0, 0);
+
+        const { count: ordersCount } = await supabase
+          .from('orders')
+          .select('*', { count: 'exact', head: true })
+          .eq('merchant_id', merchant.id)
+          .gte('created_at', startOfMonth.toISOString());
+
+        const currentUsage = ordersCount || 0;
+
         if (subscriptions && subscriptions.length > 0) {
           const totalQuota = subscriptions.reduce((sum, sub) => sum + sub.transaction_quota, 0);
           const usedQuota = subscriptions.reduce((sum, sub) => sum + sub.used_quota, 0);
           setStatus({
-            hasActiveSubscription: true,
-            remainingQuota: totalQuota - usedQuota,
+            remainingQuota: Math.max(0, totalQuota - usedQuota),
             totalQuota: totalQuota,
+            usedQuota: usedQuota,
           });
         } else {
+          // Free Tier logic
+          const freeLimit = 100;
           setStatus({
-            hasActiveSubscription: false,
-            remainingQuota: 0,
-            totalQuota: 0,
+            remainingQuota: Math.max(0, freeLimit - currentUsage),
+            totalQuota: freeLimit,
+            usedQuota: currentUsage,
           });
         }
       } catch (error) {
-        console.error('Error fetching quota status:', error);
+        console.error('Error fetching quota status for banner:', error);
       } finally {
         setLoading(false);
       }
@@ -67,62 +81,51 @@ export function QuotaAlertBanner() {
     fetchQuotaStatus();
   }, [user]);
 
-  if (loading || dismissed) return null;
-  if (!status) return null;
+  if (loading || !status) return null;
 
-  const isEmpty = status.remainingQuota <= 0;
-  const isLow = status.remainingQuota <= 5 && status.remainingQuota > 0;
+  const usagePercentage = (status.usedQuota / status.totalQuota) * 100;
+  const isCritical = status.remainingQuota <= 0;
+  const isWarning = usagePercentage > 80;
 
-  // Only show if no quota or very low
-  if (!isEmpty && !isLow && status.hasActiveSubscription) return null;
-
-  const isNoQuota = !status.hasActiveSubscription || isEmpty;
+  // Only show if usage is high or quota is empty
+  if (!isCritical && !isWarning) return null;
 
   return (
     <Alert 
-      variant="destructive" 
-      className={`mb-6 border-2 ${isNoQuota ? 'border-destructive bg-destructive/10' : 'border-warning bg-warning/10'}`}
+      variant={isCritical ? "destructive" : "default"} 
+      className={`mb-6 border-2 ${isCritical ? 'border-destructive bg-destructive/5' : 'border-yellow-500/50 bg-yellow-50/50 dark:bg-yellow-900/10'}`}
     >
-      <AlertTriangle className={`h-5 w-5 ${isNoQuota ? 'text-destructive' : 'text-warning'}`} />
-      <AlertTitle className="text-base font-bold">
-        {isNoQuota 
-          ? '⚠️ Toko Anda Tidak Dapat Menerima Pesanan!' 
-          : '⚠️ Kuota Transaksi Hampir Habis!'}
-      </AlertTitle>
-      <AlertDescription className="mt-2">
-        <p className="text-sm mb-3">
-          {isNoQuota ? (
-            <>
-              <strong>Produk Anda tidak tampil di halaman publik</strong> karena tidak memiliki kuota transaksi aktif. 
-              Pembeli tidak dapat melihat atau membeli produk Anda hingga Anda membeli paket kuota.
-            </>
-          ) : (
-            <>
-              Kuota transaksi Anda tersisa <strong>{status.remainingQuota}</strong> dari {status.totalQuota}. 
-              Segera beli paket tambahan agar toko Anda tetap dapat menerima pesanan.
-            </>
-          )}
-        </p>
-        <div className="flex gap-2">
+      <AlertTriangle className={`h-5 w-5 ${isCritical ? 'text-destructive' : 'text-yellow-600 dark:text-yellow-500'}`} />
+      <div className="flex-1">
+        <AlertTitle className={`text-base font-bold ${isCritical ? 'text-destructive' : 'text-yellow-700 dark:text-yellow-500'}`}>
+          {isCritical 
+            ? 'PENTING: Kuota Transaksi Habis!' 
+            : 'Peringatan: Kuota Transaksi Hampir Habis'}
+        </AlertTitle>
+        <AlertDescription className="mt-2">
+          <p className={`text-sm mb-3 ${isCritical ? 'text-destructive/90' : 'text-yellow-700/90 dark:text-yellow-500/90'}`}>
+            {isCritical ? (
+              <>
+                <strong>Toko Anda tidak dapat menerima pesanan baru.</strong> Segera upgrade paket atau beli kuota tambahan untuk mengaktifkan kembali fitur pemesanan.
+              </>
+            ) : (
+              <>
+                Penggunaan kuota transaksi Anda telah mencapai <strong>{Math.round(usagePercentage)}%</strong>. Sisa <strong>{status.remainingQuota}</strong> transaksi lagi sebelum toko Anda berhenti menerima pesanan.
+              </>
+            )}
+          </p>
           <Button 
             size="sm" 
+            variant={isCritical ? "destructive" : "outline"}
             onClick={() => navigate('/merchant/subscription')}
             className="gap-2"
           >
             <CreditCard className="h-4 w-4" />
-            Beli Paket Kuota Sekarang
+            {isCritical ? 'Upgrade Sekarang' : 'Beli Kuota Tambahan'}
+            <ArrowRight className="h-4 w-4" />
           </Button>
-          {isLow && (
-            <Button 
-              size="sm" 
-              variant="ghost"
-              onClick={() => setDismissed(true)}
-            >
-              Nanti
-            </Button>
-          )}
-        </div>
-      </AlertDescription>
+        </AlertDescription>
+      </div>
     </Alert>
   );
 }

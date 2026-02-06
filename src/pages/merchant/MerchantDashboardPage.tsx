@@ -171,10 +171,10 @@ export default function MerchantDashboardPage() {
 
   return (
     <MerchantLayout title="Dashboard" subtitle="Ringkasan toko Anda">
-      {/* Quota Alert Banner - Shows prominently when no quota */}
+      {/* 1. Quota Alert Banner - High priority, at the top */}
       <QuotaAlertBanner />
 
-      {/* Store Status Card */}
+      {/* 2. Store Status Card */}
       <div className="bg-card rounded-xl border border-border p-5 mb-6">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
@@ -204,7 +204,7 @@ export default function MerchantDashboardPage() {
         </div>
       </div>
 
-      {/* Quota and Group Status */}
+      {/* 3. Quota and Group Status - Inside grid */}
       <div className="grid md:grid-cols-2 gap-6 mb-6">
         <QuotaStatusCard />
         <MerchantGroupCard />
