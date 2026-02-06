@@ -587,7 +587,7 @@ export default function MerchantSubscriptionPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Payment Dialog - IMPROVED */}
+      {/* Payment Dialog */}
       <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -798,7 +798,7 @@ export default function MerchantSubscriptionPage() {
                     <p className="text-sm font-medium text-slate-900 mb-1">Drag & drop bukti pembayaran di sini</p>
                     <p className="text-xs text-slate-600 mb-4">atau klik untuk memilih file</p>
                     <p className="text-xs text-slate-500 mb-4">JPG, PNG, WebP, atau PDF (Max 5MB)</p>
-                    <Input 
+                    <input 
                       ref={fileInputRef}
                       type="file" 
                       accept="image/jpeg,image/png,image/webp,application/pdf" 
@@ -843,9 +843,6 @@ export default function MerchantSubscriptionPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </MerchantLayout>
-  );
-}
 
       {/* Detail Modal */}
       <Dialog open={detailModalOpen} onOpenChange={setDetailModalOpen}>
@@ -1015,3 +1012,6 @@ export default function MerchantSubscriptionPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </MerchantLayout>
+  );
+}
