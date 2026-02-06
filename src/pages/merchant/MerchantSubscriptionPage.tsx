@@ -222,8 +222,8 @@ export default function MerchantSubscriptionPage() {
     setUploading(true);
     try {
       const fileExt = file.name.split('.').pop();
-      const fileName = `${merchant.id}/${subId}-${Math.random()}.${fileExt}`;
-      const filePath = `payment-proofs/${fileName}`;
+      const fileName = `payment-proofs/${merchant.id}/${subId}-${Math.random()}.${fileExt}`;
+      const filePath = fileName;
 
       const { error: uploadError } = await supabase.storage
         .from('merchants')

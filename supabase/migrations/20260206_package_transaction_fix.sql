@@ -63,3 +63,31 @@ CREATE TRIGGER on_subscription_activation
   AFTER UPDATE ON public.merchant_subscriptions
   FOR EACH ROW
   EXECUTE FUNCTION public.handle_subscription_activation();
+
+-- STORAGE POLICIES for payment proofs
+-- Ensure 'merchants' bucket exists and has correct policies
+-- Note: These are usually set in the Supabase Dashboard, but adding them here for reference/migration
+
+-- Allow merchants to upload their own payment proofs
+-- Path: payment-proofs/{merchant_id}/{filename}
+DO $$ 
+BEGIN
+  -- Insert policy for uploads
+  INSERT INTO storage.policies (name, bucket_id, operation, definition, check_expression)
+  VALUES (
+    'Allow merchants to upload payment proofs',
+    'merchants',
+    'INSERT',
+    '(role = ''authenticated''::text)',
+    '(bucket_id = ''merchants''::text AND (storage.foldername(name))[1] = ''payment-proofs''::text)'
+  ) ON CONFLICT DO NOTHING;
+
+  -- Allow public/authenticated to read payment proofs (so admin can see them)
+  INSERT INTO storage.policies (name, bucket_id, operation, definition)
+  VALUES (
+    'Allow authenticated to read payment proofs',
+    'merchants',
+    'SELECT',
+    '(role = ''authenticated''::text)'
+  ) ON CONFLICT DO NOTHING;
+END $$;
