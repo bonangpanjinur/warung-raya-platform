@@ -150,8 +150,8 @@ export default function AdminTransactionQuotaPage() {
         .from('merchant_subscriptions')
         .select(`
           *,
-          merchant:merchants(name),
-          package:transaction_packages(name, transaction_quota)
+          merchant:merchants!merchant_subscriptions_merchant_id_fkey(name),
+          package:transaction_packages!merchant_subscriptions_package_id_fkey(name, transaction_quota)
         `)
         .order('created_at', { ascending: false });
 
