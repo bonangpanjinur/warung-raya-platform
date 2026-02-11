@@ -22,6 +22,7 @@ import {
 import { reverseGeocode } from '@/hooks/useGeocoding';
 import { ImageUpload } from '@/components/ui/ImageUpload';
 import { AdminLocationPicker } from './AdminLocationPicker';
+import { useQuery } from '@tanstack/react-query';
 
 interface VillageEditDialogProps {
   open: boolean;
@@ -49,12 +50,7 @@ interface OwnerInfo {
   user_id: string;
   full_name: string | null;
   phone: string | null;
-}
-
-interface AvailableUser {
-  user_id: string;
-  full_name: string | null;
-  phone: string | null;
+  email?: string | null;
 }
 
 function findCodeByName(items: Region[], name: string | null): string {
@@ -75,8 +71,6 @@ export function VillageEditDialog({
   
   // Owner state
   const [currentOwner, setCurrentOwner] = useState<OwnerInfo | null>(null);
-  const [availableUsers, setAvailableUsers] = useState<AvailableUser[]>([]);
-  const [loadingUsers, setLoadingUsers] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string>('none_value');
 
   const [formData, setFormData] = useState({
@@ -105,6 +99,21 @@ export function VillageEditDialog({
   const [districtsList, setDistrictsList] = useState<Region[]>([]);
   const [subdistrictsList, setSubdistrictsList] = useState<Region[]>([]);
 
+  // 1. Fetch data profil untuk pilihan pengelola menggunakan useQuery
+  const { data: profiles, isLoading: isLoadingProfiles } = useQuery({
+    queryKey: ["profiles-for-selection"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("user_id, full_name, email, phone")
+        .order("full_name", { ascending: true });
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: open,
+  });
+
   useEffect(() => {
     if (!open || !initialData) return;
 
@@ -129,14 +138,12 @@ export function VillageEditDialog({
     });
 
     resolveAddressCodes(initialData.province, initialData.regency, initialData.district, initialData.subdistrict);
-    loadOwnerAndUsers();
+    loadCurrentOwner();
   }, [open, initialData, villageId]);
 
   // --- Owner logic ---
-  const loadOwnerAndUsers = async () => {
-    setLoadingUsers(true);
+  const loadCurrentOwner = async () => {
     try {
-      // Get current linked user from user_villages
       const { data: userVillage } = await supabase
         .from('user_villages')
         .select('user_id')
@@ -146,7 +153,7 @@ export function VillageEditDialog({
       if (userVillage?.user_id) {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('user_id, full_name, phone')
+          .select('user_id, full_name, phone, email')
           .eq('user_id', userVillage.user_id)
           .maybeSingle();
         setCurrentOwner(profile || { user_id: userVillage.user_id, full_name: null, phone: null });
@@ -155,42 +162,8 @@ export function VillageEditDialog({
         setCurrentOwner(null);
         setSelectedUserId('none_value');
       }
-
-      // Get all admin_desa role users
-      const { data: desaRoles } = await supabase
-        .from('user_roles')
-        .select('user_id')
-        .eq('role', 'admin_desa');
-
-      if (!desaRoles || desaRoles.length === 0) {
-        // Also check buyer users who could be assigned
-        setAvailableUsers([]);
-        setLoadingUsers(false);
-        return;
-      }
-
-      const desaUserIds = desaRoles.map(r => r.user_id);
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('user_id, full_name, phone')
-        .in('user_id', desaUserIds);
-
-      // Get already-linked user_ids (excluding this village)
-      const { data: linkedVillages } = await supabase
-        .from('user_villages')
-        .select('user_id')
-        .neq('village_id', villageId);
-
-      const linkedUserIds = new Set(linkedVillages?.map(v => v.user_id) || []);
-
-      const available = (profiles || []).filter(
-        p => !linkedUserIds.has(p.user_id) && p.user_id !== userVillage?.user_id
-      );
-      setAvailableUsers(available);
     } catch (error) {
-      console.error('Error loading users:', error);
-    } finally {
-      setLoadingUsers(false);
+      console.error('Error loading current owner:', error);
     }
   };
 
@@ -306,39 +279,37 @@ export function VillageEditDialog({
         
         const provCode = findCodeByName(provList, result.province);
         if (provCode) {
+          setFormData(prev => ({ ...prev, province_code: provCode, province_name: result.province }));
           const regList = await fetchRegencies(provCode);
           setRegenciesList(regList);
-          const regCode = findCodeByName(regList, result.city);
-
-          let distCode = '', villCode = '';
+          
+          const regCode = findCodeByName(regList, result.regency);
           if (regCode) {
+            setFormData(prev => ({ ...prev, regency_code: regCode, regency_name: result.regency }));
             const distList = await fetchDistricts(regCode);
             setDistrictsList(distList);
-            distCode = findCodeByName(distList, result.district);
+            
+            const distCode = findCodeByName(distList, result.district);
             if (distCode) {
+              setFormData(prev => ({ ...prev, district_code: distCode, district_name: result.district }));
               const villList = await fetchVillages(distCode);
               setSubdistrictsList(villList);
-              villCode = findCodeByName(villList, result.village);
+              
+              const villCode = findCodeByName(villList, result.subdistrict);
+              if (villCode) {
+                setFormData(prev => ({ ...prev, subdistrict_code: villCode, subdistrict_name: result.subdistrict }));
+              }
             }
           }
-
-          setFormData(prev => ({
-            ...prev,
-            province_code: provCode, province_name: result.province || prev.province_name,
-            regency_code: regCode, regency_name: result.city || prev.regency_name,
-            district_code: distCode, district_name: result.district || prev.district_name,
-            subdistrict_code: villCode, subdistrict_name: result.village || prev.subdistrict_name,
-          }));
         }
       }
     } catch (error) {
-      console.error('Reverse geocoding error:', error);
+      console.error('Error reverse geocoding:', error);
     }
   };
 
-  // --- Submit ---
   const handleSubmit = async () => {
-    if (!formData.name.trim()) {
+    if (!formData.name) {
       toast.error('Nama desa wajib diisi');
       return;
     }
@@ -465,7 +436,7 @@ export function VillageEditDialog({
                 <p className="text-sm font-medium flex items-center gap-2">
                   <UserCheck className="h-4 w-4 text-primary" />
                   Terhubung dengan: <span className="text-primary">{currentOwner.full_name || 'Tanpa Nama'}</span>
-                  {currentOwner.phone && <span className="text-muted-foreground">({currentOwner.phone})</span>}
+                  {currentOwner.email && <span className="text-muted-foreground">({currentOwner.email})</span>}
                 </p>
               </div>
             ) : (
@@ -476,26 +447,21 @@ export function VillageEditDialog({
 
             <div className="space-y-2">
               <Label>{currentOwner ? 'Ganti Pengelola' : 'Pilih Pengelola'}</Label>
-              <Select value={selectedUserId} onValueChange={setSelectedUserId} disabled={loadingUsers}>
+              <Select value={selectedUserId} onValueChange={setSelectedUserId} disabled={isLoadingProfiles}>
                 <SelectTrigger>
-                  <SelectValue placeholder={loadingUsers ? 'Memuat...' : 'Pilih user'} />
+                  <SelectValue placeholder={isLoadingProfiles ? 'Memuat...' : 'Pilih user'} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none_value">-- Lepas Pengelola --</SelectItem>
-                  {currentOwner && (
-                    <SelectItem value={currentOwner.user_id}>
-                      ✅ {currentOwner.full_name || 'Tanpa Nama'} ({currentOwner.phone || currentOwner.user_id.slice(0, 8)}) — saat ini
-                    </SelectItem>
-                  )}
-                  {availableUsers.map(user => (
+                  {profiles?.map(user => (
                     <SelectItem key={user.user_id} value={user.user_id}>
-                      {user.full_name || 'Tanpa Nama'} ({user.phone || user.user_id.slice(0, 8)})
+                      {user.full_name || 'Tanpa Nama'} ({user.email || user.user_id.slice(0, 8)})
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Menampilkan user dengan role admin desa yang belum terhubung ke desa lain
+                Pilih user yang akan mengelola desa wisata ini.
               </p>
             </div>
           </div>
