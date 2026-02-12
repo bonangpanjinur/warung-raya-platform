@@ -19,6 +19,13 @@ interface VerifikatorInfo {
   address: string | null;
 }
 
+interface GroupInfo {
+  id: string;
+  name: string;
+  description: string | null;
+  verifikator_id: string;
+}
+
 export const MerchantGroupCard = () => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -26,13 +33,15 @@ export const MerchantGroupCard = () => {
   // State untuk form pencarian
   const [loading, setLoading] = useState(false);
   const [searchCode, setSearchCode] = useState("");
+  const [searchedCodeData, setSearchedCodeData] = useState<any | null>(null);
   const [searchedVerifikator, setSearchedVerifikator] = useState<VerifikatorInfo | null>(null);
 
   // State untuk data keanggotaan saat ini
   const [initialLoading, setInitialLoading] = useState(true);
-  const [isJoined, setIsJoined] = useState(false); // Penanda utama status bergabung
+  const [isJoined, setIsJoined] = useState(false);
+  const [currentMerchantData, setCurrentMerchantData] = useState<any | null>(null);
   const [currentVerifikator, setCurrentVerifikator] = useState<VerifikatorInfo | null>(null);
-  const [verifikatorId, setVerifikatorId] = useState<string | null>(null);
+  const [currentGroup, setCurrentGroup] = useState<GroupInfo | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -43,42 +52,56 @@ export const MerchantGroupCard = () => {
   const checkCurrentMembership = async () => {
     try {
       setInitialLoading(true);
-      // 1. Ambil profile user saat ini untuk cek verifikator_id
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('verifikator_id, referral_code')
-        .eq('id', user?.id)
-        .single();
+      // 1. Ambil data merchant untuk cek verifikator_id dan group_id
+      const { data: merchant, error: merchantError } = await supabase
+        .from('merchants')
+        .select('id, verifikator_id, group_id, verifikator_code, trade_group')
+        .eq('user_id', user?.id)
+        .maybeSingle();
 
-      if (profileError) {
-        console.error('Error fetching profile:', profileError);
+      if (merchantError) {
+        console.error('Error fetching merchant:', merchantError);
         return;
       }
 
-      // 2. Cek apakah verifikator_id ada
-      if (profile?.verifikator_id) {
+      if (merchant && (merchant.verifikator_id || merchant.group_id)) {
         setIsJoined(true);
-        setVerifikatorId(profile.verifikator_id);
-        console.log("Merchant terdaftar dengan Verifikator ID:", profile.verifikator_id);
+        setCurrentMerchantData(merchant);
 
-        // 3. Coba ambil detail verifikator
-        const { data: verifikatorData, error: verifikatorError } = await supabase
-          .from('profiles')
-          .select('id, full_name, business_name, referral_code, phone, email, address')
-          .eq('id', profile.verifikator_id)
-          .single();
+        // 2. Ambil detail verifikator jika ada
+        if (merchant.verifikator_id) {
+          const { data: verifikatorData } = await supabase
+            .from('profiles')
+            .select('id, full_name, phone, address')
+            .eq('id', merchant.verifikator_id)
+            .maybeSingle();
 
-        if (verifikatorError) {
-          console.error('Gagal mengambil detail verifikator (mungkin batasan akses):', verifikatorError);
-          // Tetap tandai sebagai joined meskipun detail tidak bisa diambil
-        } else {
-          console.log("Detail verifikator ditemukan:", verifikatorData);
-          setCurrentVerifikator(verifikatorData);
+          if (verifikatorData) {
+            setCurrentVerifikator({
+              ...verifikatorData,
+              business_name: merchant.trade_group, // Gunakan trade_group dari merchant sebagai fallback business_name
+              referral_code: merchant.verifikator_code,
+              email: null
+            });
+          }
+        }
+
+        // 3. Ambil detail group jika ada
+        if (merchant.group_id) {
+          const { data: groupData } = await supabase
+            .from('trade_groups')
+            .select('id, name, description, verifikator_id')
+            .eq('id', merchant.group_id)
+            .maybeSingle();
+
+          if (groupData) {
+            setCurrentGroup(groupData);
+          }
         }
       } else {
-        console.log("Merchant belum memiliki verifikator_id");
         setIsJoined(false);
         setCurrentVerifikator(null);
+        setCurrentGroup(null);
       }
     } catch (error) {
       console.error('Error checking membership:', error);
@@ -88,10 +111,11 @@ export const MerchantGroupCard = () => {
   };
 
   const searchVerifikator = async () => {
-    if (!searchCode.trim()) {
+    const trimmedCode = searchCode.trim().toUpperCase();
+    if (!trimmedCode) {
       toast({
         title: "Kode kosong",
-        description: "Mohon masukkan kode referal verifikator",
+        description: "Mohon masukkan kode referal kelompok dagang",
         variant: "destructive",
       });
       return;
@@ -99,28 +123,68 @@ export const MerchantGroupCard = () => {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, full_name, business_name, referral_code, phone, email, address')
-        .eq('referral_code', searchCode.toUpperCase())
-        .eq('role', 'verifikator')
-        .single();
+      // Cari di tabel verifikator_codes (menggunakan ilike untuk ketahanan ekstra)
+      const { data: codeData, error: codeError } = await supabase
+        .from('verifikator_codes')
+        .select('id, code, trade_group, verifikator_id, description')
+        .ilike('code', trimmedCode)
+        .eq('is_active', true)
+        .maybeSingle();
 
-      if (error || !data) {
-        toast({
-          title: "Verifikator tidak ditemukan",
-          description: "Pastikan kode benar dan pemilik kode adalah verifikator.",
-          variant: "destructive",
-        });
-        setSearchedVerifikator(null);
+      if (codeError || !codeData) {
+        // Fallback: Cari di profiles (referral_code) jika ada (logic lama)
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('id, full_name, phone, address')
+          .ilike('referral_code', trimmedCode)
+          .maybeSingle();
+
+        if (profileError || !profileData) {
+          toast({
+            title: "Kode tidak ditemukan",
+            description: "Pastikan kode kelompok dagang benar dan masih aktif.",
+            variant: "destructive",
+          });
+          setSearchedVerifikator(null);
+          setSearchedCodeData(null);
+        } else {
+          setSearchedCodeData({
+            code: trimmedCode,
+            trade_group: "Kelompok Dagang",
+            verifikator_id: profileData.id
+          });
+          setSearchedVerifikator({
+            ...profileData,
+            business_name: "Kelompok Dagang",
+            referral_code: trimmedCode,
+            email: null
+          });
+        }
       } else {
-        setSearchedVerifikator(data);
+        setSearchedCodeData(codeData);
+        
+        // Ambil info verifikator dari profile
+        const { data: verifikatorProfile } = await supabase
+          .from('profiles')
+          .select('id, full_name, phone, address')
+          .eq('id', codeData.verifikator_id)
+          .maybeSingle();
+
+        setSearchedVerifikator({
+          id: codeData.verifikator_id,
+          full_name: verifikatorProfile?.full_name || "Verifikator",
+          business_name: codeData.trade_group,
+          referral_code: codeData.code,
+          phone: verifikatorProfile?.phone || null,
+          email: null,
+          address: verifikatorProfile?.address || null
+        });
       }
     } catch (error) {
       console.error('Error searching:', error);
       toast({
         title: "Terjadi kesalahan",
-        description: "Gagal mencari verifikator.",
+        description: "Gagal mencari kelompok dagang.",
         variant: "destructive",
       });
     } finally {
@@ -129,14 +193,28 @@ export const MerchantGroupCard = () => {
   };
 
   const joinGroup = async () => {
-    if (!searchedVerifikator || !user) return;
+    if (!searchedVerifikator || !user || !searchedCodeData) return;
 
     setLoading(true);
     try {
+      // Ambil ID merchant
+      const { data: merchantData } = await supabase
+        .from('merchants')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (!merchantData) throw new Error("Merchant data not found");
+
+      // Update merchant dengan info verifikator
       const { error } = await supabase
-        .from('profiles')
-        .update({ verifikator_id: searchedVerifikator.id })
-        .eq('id', user.id);
+        .from('merchants')
+        .update({ 
+          verifikator_id: searchedVerifikator.id,
+          verifikator_code: searchedCodeData.code,
+          trade_group: searchedCodeData.trade_group
+        })
+        .eq('id', merchantData.id);
 
       if (error) throw error;
 
@@ -145,16 +223,12 @@ export const MerchantGroupCard = () => {
         description: `Selamat datang di kelompok ${searchedVerifikator.business_name || searchedVerifikator.full_name}`,
       });
       
-      // Update state lokal segera
-      setIsJoined(true);
-      setVerifikatorId(searchedVerifikator.id);
-      setCurrentVerifikator(searchedVerifikator);
-      
       // Bersihkan state pencarian
       setSearchedVerifikator(null);
+      setSearchedCodeData(null);
       setSearchCode("");
       
-      // Refresh data untuk memastikan sinkronisasi
+      // Refresh data
       checkCurrentMembership();
     } catch (error) {
       console.error('Error joining group:', error);
@@ -192,9 +266,12 @@ export const MerchantGroupCard = () => {
 
   // --- TAMPILAN SUDAH BERGABUNG ---
   if (isJoined) {
+    const displayName = currentGroup?.name || currentMerchantData?.trade_group || currentVerifikator?.business_name || "Kelompok Dagang";
+    const verifikatorName = currentVerifikator?.full_name || "Verifikator Terdaftar";
+    const code = currentMerchantData?.verifikator_code || currentVerifikator?.referral_code || "-";
+
     return (
       <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-200 shadow-sm relative overflow-hidden">
-        {/* Background Pattern Decoration */}
         <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-green-100 rounded-full opacity-50 blur-2xl"></div>
 
         <CardHeader className="pb-3 relative z-10">
@@ -204,9 +281,9 @@ export const MerchantGroupCard = () => {
                 <ShieldCheck className="h-5 w-5 text-green-700" />
               </div>
               <div>
-                <CardTitle className="text-lg text-green-800">Status Keanggotaan</CardTitle>
+                <CardTitle className="text-lg text-green-800">Status Kelompok</CardTitle>
                 <CardDescription className="text-green-700/80 font-medium">
-                  Terverifikasi & Aktif
+                  Terdaftar & Aktif
                 </CardDescription>
               </div>
             </div>
@@ -217,74 +294,56 @@ export const MerchantGroupCard = () => {
         </CardHeader>
 
         <CardContent className="space-y-4 relative z-10">
-          {currentVerifikator ? (
-            // Jika detail verifikator berhasil diambil
-            <div className="bg-white/90 backdrop-blur-sm p-4 rounded-xl border border-green-100 shadow-sm transition-all hover:shadow-md">
-              <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-                <div className="bg-green-50 p-3 rounded-lg border border-green-100 flex items-center justify-center shrink-0">
-                  <Store className="h-8 w-8 text-green-600" />
+          <div className="bg-white/90 backdrop-blur-sm p-4 rounded-xl border border-green-100 shadow-sm transition-all hover:shadow-md">
+            <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+              <div className="bg-green-50 p-3 rounded-lg border border-green-100 flex items-center justify-center shrink-0">
+                <Store className="h-8 w-8 text-green-600" />
+              </div>
+              <div className="space-y-3 flex-1">
+                <div>
+                  <h3 className="font-bold text-lg text-gray-900 leading-tight">
+                    {displayName}
+                  </h3>
+                  <p className="text-sm text-gray-500 font-medium mt-1 flex items-center gap-1">
+                    <Users className="h-3 w-3" /> Verifikator: {verifikatorName}
+                  </p>
                 </div>
-                <div className="space-y-3 flex-1">
-                  <div>
-                    <h3 className="font-bold text-lg text-gray-900 leading-tight">
-                      {currentVerifikator.business_name || "Kelompok Dagang"}
-                    </h3>
-                    <p className="text-sm text-gray-500 font-medium mt-1 flex items-center gap-1">
-                      <Users className="h-3 w-3" /> Verifikator: {currentVerifikator.full_name}
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                    <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider mb-1">Kode Kelompok</p>
+                    <p className="text-sm font-mono font-semibold text-slate-800 tracking-wide select-all">
+                      {code}
                     </p>
                   </div>
-                  
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {currentVerifikator?.phone && (
                     <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-                      <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider mb-1">Kode Kelompok</p>
-                      <p className="text-sm font-mono font-semibold text-slate-800 tracking-wide select-all">
-                        {currentVerifikator.referral_code || "-"}
-                      </p>
-                    </div>
-                    {currentVerifikator.phone && (
-                      <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-                        <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider mb-1">Kontak</p>
-                        <p className="text-sm font-medium text-slate-800">
-                          {currentVerifikator.phone}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  {currentVerifikator.address && (
-                    <div className="pt-1 border-t border-slate-100">
-                      <p className="text-xs text-muted-foreground flex items-start gap-1.5 mt-2">
-                        <span className="shrink-0 mt-0.5">📍</span>
-                        <span className="line-clamp-2">{currentVerifikator.address}</span>
+                      <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider mb-1">Kontak</p>
+                      <p className="text-sm font-medium text-slate-800">
+                        {currentVerifikator.phone}
                       </p>
                     </div>
                   )}
                 </div>
+
+                {(currentGroup?.description || currentVerifikator?.address) && (
+                  <div className="pt-1 border-t border-slate-100">
+                    <p className="text-xs text-muted-foreground flex items-start gap-1.5 mt-2">
+                      <span className="shrink-0 mt-0.5">📍</span>
+                      <span className="line-clamp-2">{currentGroup?.description || currentVerifikator?.address}</span>
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
-          ) : (
-            // Jika detail GAGAL diambil tapi ID ada (tetap anggap sudah join)
-            <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-200">
-              <div className="flex gap-3">
-                <AlertCircle className="h-5 w-5 text-yellow-600 shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="font-semibold text-yellow-800">Data Verifikator Tidak Tampil</h4>
-                  <p className="text-sm text-yellow-700 mt-1">
-                    Anda sudah terdaftar secara sistem (ID Verifikator: <span className="font-mono text-xs">{verifikatorId}</span>), 
-                    namun profil lengkap verifikator belum dapat dimuat.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
+          </div>
           
           <Alert className="bg-blue-50/80 border-blue-100 text-blue-900">
             <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5" />
             <div className="ml-2">
-              <AlertTitle className="text-blue-800 font-semibold text-sm">Informasi Penting</AlertTitle>
-              <AlertDescription className="text-blue-700 text-xs mt-1 leading-relaxed">
-                Semua transaksi dan produk Anda akan divalidasi oleh verifikator di atas. 
-                Pastikan stok selalu update agar proses jual beli lancar.
+              <AlertTitle className="text-blue-800 font-semibold text-sm">Informasi</AlertTitle>
+              <AlertDescription className="text-blue-700 text-xs">
+                Anda telah bergabung dengan kelompok dagang ini. Silakan hubungi verifikator jika ada kendala.
               </AlertDescription>
             </div>
           </Alert>
@@ -311,13 +370,13 @@ export const MerchantGroupCard = () => {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Kode Verifikator (Contoh: SU92BDXJ)"
+                placeholder="KODE VERIFIKATOR (CONTOH: SU92BDX)"
                 value={searchCode}
                 onChange={(e) => setSearchCode(e.target.value)}
                 className="pl-9 uppercase font-medium tracking-wider bg-white"
               />
             </div>
-            <Button onClick={searchVerifikator} disabled={loading} className="shrink-0">
+            <Button onClick={searchVerifikator} disabled={loading} className="shrink-0 bg-primary hover:bg-primary/90">
               {loading ? "..." : "Cari"}
             </Button>
           </div>
