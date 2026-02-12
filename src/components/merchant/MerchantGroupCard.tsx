@@ -1,313 +1,224 @@
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
-import { Users, Copy, Plus, LogIn, Loader2 } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Users, Search, CheckCircle, Store, AlertCircle } from "lucide-react";
+import { useToast } from "../../hooks/use-toast";
+import { supabase } from "../../integrations/supabase/client";
+import { useAuth } from "../../contexts/AuthContext";
+import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
 
-// UBAH: Gunakan named export agar sesuai dengan import { MerchantGroupCard } di dashboard
-export function MerchantGroupCard() {
-  const [isLoading, setIsLoading] = useState(false);
-  const [groupName, setGroupName] = useState("");
-  const [joinCode, setJoinCode] = useState("");
-  const [currentGroup, setCurrentGroup] = useState<any>(null);
+interface VerifikatorInfo {
+  id: string;
+  full_name: string | null;
+  business_name: string | null;
+  referral_code: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+}
+
+export const MerchantGroupCard = () => {
+  const { user } = useAuth();
   const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
+  const [searchCode, setSearchCode] = useState("");
+  const [verifikator, setVerifikator] = useState<VerifikatorInfo | null>(null);
+  const [currentVerifikator, setCurrentVerifikator] = useState<VerifikatorInfo | null>(null);
 
   useEffect(() => {
-    fetchCurrentGroup();
-  }, []);
+    if (user) {
+      checkCurrentMembership();
+    }
+  }, [user]);
 
-  const fetchCurrentGroup = async () => {
+  const checkCurrentMembership = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      // Get current user's profile to find their verifikator_id
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('verifikator_id, referral_code')
+        .eq('id', user?.id)
+        .single();
 
-      // Cari profil merchant milik user
-      const { data: merchant } = await supabase
-        .from('merchants')
-        .select('id, trade_group_id, verifikator_code')
-        .eq('user_id', user.id)
-        .maybeSingle();
+      if (profileError) throw profileError;
 
-      if (merchant) {
-        // 1. Cek via trade_group_id (hubungan langsung)
-        if (merchant.trade_group_id) {
-          const { data: group } = await supabase
-            .from('trade_groups')
-            .select('*')
-            .eq('id', merchant.trade_group_id)
-            .single();
-          
-          if (group) {
-            setCurrentGroup(group);
-            return;
-          }
-        }
+      // If they have a verifikator_id, fetch that verifikator's details
+      if (profile?.verifikator_id) {
+        const { data: verifikatorData, error: verifikatorError } = await supabase
+          .from('profiles')
+          .select('id, full_name, business_name, referral_code, phone, email, address')
+          .eq('id', profile.verifikator_id)
+          .single();
 
-        // 2. Cek via verifikator_code (hubungan tidak langsung melalui kode)
-        if (merchant.verifikator_code) {
-          // Cari trade_group yang memiliki kode yang sama dengan verifikator_code merchant
-          const { data: group } = await supabase
-            .from('trade_groups')
-            .select('*')
-            .eq('code', merchant.verifikator_code.toUpperCase())
-            .maybeSingle();
-          
-          if (group) {
-            setCurrentGroup(group);
-            
-            // Opsional: Sinkronkan trade_group_id ke tabel merchants untuk performa ke depan
-            await supabase
-              .from('merchants')
-              .update({ trade_group_id: group.id })
-              .eq('id', merchant.id);
-          }
-        }
+        if (verifikatorError) throw verifikatorError;
+        
+        console.log("Current verifikator found:", verifikatorData);
+        setCurrentVerifikator(verifikatorData);
       }
     } catch (error) {
-      console.error("Error fetching group:", error);
+      console.error('Error checking membership:', error);
     }
   };
 
-  const handleCreateGroup = async () => {
-    if (!groupName.trim()) {
-      toast({ title: "Peringatan", description: "Nama kelompok harus diisi", variant: "destructive" });
+  const searchVerifikator = async () => {
+    if (!searchCode.trim()) {
+      toast({
+        title: "Kode kosong",
+        description: "Mohon masukkan kode referal verifikator",
+        variant: "destructive",
+      });
       return;
     }
 
-    setIsLoading(true);
+    setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Silakan login terlebih dahulu");
-
-      // GENERATE KODE UNIK OTOMATIS
-      // Database mewajibkan kolom 'code' terisi (NOT NULL).
-      // Kita buat kode acak 6 karakter, misal: G-A1B2C3
-      const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-      const generatedCode = `G-${randomCode}`;
-
-      // Insert kelompok dagang baru dengan menyertakan 'code' dan 'verifikator_id'
-      const { data: newGroup, error: groupError } = await supabase
-        .from('trade_groups')
-        .insert({
-          name: groupName,
-          code: generatedCode,
-          verifikator_id: user.id, // <- Tambahkan ini agar lolos RLS dan merchant jadi pemilik grup
-        })
-        .select()
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, business_name, referral_code, phone, email, address')
+        .eq('referral_code', searchCode.toUpperCase())
+        .eq('role', 'verifikator')
         .single();
-
-      if (groupError) throw groupError;
-
-      // Update merchant untuk masuk ke kelompok baru
-      const { error: updateError } = await supabase
-        .from('merchants')
-        .update({ trade_group_id: newGroup.id })
-        .eq('user_id', user.id);
-
-      if (updateError) {
-        console.error("Gagal update merchant info, mencoba fallback...", updateError);
-        // Fallback jika menggunakan merchant_profiles (untuk kompatibilitas backward)
-        await supabase
-          .from('merchant_profiles')
-          .update({ trade_group_id: newGroup.id })
-          .eq('user_id', user.id);
-      }
-
-      setCurrentGroup(newGroup);
-      toast({ title: "Berhasil", description: `Kelompok '${groupName}' berhasil dibuat dengan kode ${generatedCode}` });
-      setGroupName("");
-    } catch (error: any) {
-      console.error("Create group error:", error);
-      toast({
-        title: "Gagal membuat kelompok",
-        description: error.message || "Terjadi kesalahan pada database",
-        variant: "destructive"
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleJoinGroup = async () => {
-    if (!joinCode.trim()) return;
-    setIsLoading(true);
-
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Silakan login terlebih dahulu");
-
-      // Cari grup berdasarkan kode yang diinput
-      const { data: group, error: findError } = await supabase
-        .from('trade_groups')
-        .select('*')
-        .eq('code', joinCode.trim().toUpperCase()) // Pastikan uppercase saat mencari
-        .single();
-
-      if (findError || !group) {
-        throw new Error("Kelompok tidak ditemukan. Pastikan kode benar.");
-      }
-
-      // Update merchant join ke grup
-      const { error: updateError } = await supabase
-        .from('merchants')
-        .update({ trade_group_id: group.id })
-        .eq('user_id', user.id);
-
-      if (updateError) {
-        // Fallback
-        await supabase
-          .from('merchant_profiles')
-          .update({ trade_group_id: group.id })
-          .eq('user_id', user.id);
-      }
-
-      setCurrentGroup(group);
-      toast({ title: "Berhasil", description: `Berhasil bergabung ke kelompok ${group.name}` });
-      setJoinCode("");
-    } catch (error: any) {
-      toast({
-        title: "Gagal bergabung",
-        description: error.message || "Terjadi kesalahan",
-        variant: "destructive"
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleLeaveGroup = async () => {
-    setIsLoading(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { error } = await supabase
-        .from('merchants')
-        .update({ trade_group_id: null })
-        .eq('user_id', user.id);
 
       if (error) {
-        await supabase
-          .from('merchant_profiles')
-          .update({ trade_group_id: null })
-          .eq('user_id', user.id);
+        toast({
+          title: "Verifikator tidak ditemukan",
+          description: "Pastikan kode referal yang anda masukkan benar",
+          variant: "destructive",
+        });
+        setVerifikator(null);
+      } else {
+        setVerifikator(data);
       }
-
-      setCurrentGroup(null);
-      toast({ title: "Berhasil", description: "Berhasil keluar dari kelompok" });
-    } catch (error: any) {
-      toast({ title: "Gagal", description: error.message, variant: "destructive" });
+    } catch (error) {
+      console.error('Error searching verifikator:', error);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  const copyCode = () => {
-    if (currentGroup?.code) {
-      navigator.clipboard.writeText(currentGroup.code);
-      toast({ title: "Tersalin", description: "Kode kelompok disalin ke clipboard" });
+  const joinGroup = async () => {
+    if (!verifikator || !user) return;
+
+    setLoading(true);
+    try {
+      // Update merchant's profile with verifikator_id
+      const { error } = await supabase
+        .from('profiles')
+        .update({ verifikator_id: verifikator.id })
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Berhasil bergabung",
+        description: `Anda telah bergabung dengan kelompok ${verifikator.business_name || verifikator.full_name}`,
+      });
+      
+      setCurrentVerifikator(verifikator);
+      setVerifikator(null);
+      setSearchCode("");
+    } catch (error) {
+      console.error('Error joining group:', error);
+      toast({
+        title: "Gagal bergabung",
+        description: "Terjadi kesalahan saat mencoba bergabung dengan kelompok",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
-  if (currentGroup) {
+  // State 1: Sudah bergabung dengan verifikator
+  if (currentVerifikator) {
     return (
-      <Card>
+      <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="w-5 h-5 text-primary" />
-            Kelompok Dagang Anda
-          </CardTitle>
-          <CardDescription>Informasi kelompok dagang yang Anda ikuti saat ini.</CardDescription>
+          <div className="flex items-center gap-2">
+            <CheckCircle className="h-6 w-6 text-green-600" />
+            <CardTitle className="text-green-800">Keanggotaan Kelompok Dagang</CardTitle>
+          </div>
+          <CardDescription>
+            Anda terdaftar dalam kelompok dagang di bawah naungan verifikator ini.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">Nama Kelompok</p>
-            <p className="text-lg font-semibold">{currentGroup.name}</p>
-          </div>
-          <div>
-            <p className="text-sm font-medium text-muted-foreground mb-1">Kode Undangan (Referral)</p>
-            <div className="flex items-center gap-2">
-              <code className="px-3 py-1.5 bg-muted rounded-md font-mono text-lg tracking-widest text-primary font-bold">
-                {currentGroup.code}
-              </code>
-              <Button variant="outline" size="icon" onClick={copyCode}>
-                <Copy className="w-4 h-4" />
-              </Button>
+          <div className="bg-white p-4 rounded-lg border border-green-100 shadow-sm">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-green-100 rounded-full">
+                <Store className="h-6 w-6 text-green-700" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-semibold text-lg text-gray-900">
+                  {currentVerifikator.business_name || "Nama Usaha Tidak Ada"}
+                </h3>
+                <p className="text-sm text-gray-500">Verifikator: {currentVerifikator.full_name}</p>
+                <div className="pt-2 flex flex-col gap-1 text-sm text-gray-600">
+                  <p><span className="font-medium">Kode Referal:</span> {currentVerifikator.referral_code}</p>
+                  {currentVerifikator.phone && (
+                    <p><span className="font-medium">Telp:</span> {currentVerifikator.phone}</p>
+                  )}
+                  {currentVerifikator.address && (
+                    <p><span className="font-medium">Alamat:</span> {currentVerifikator.address}</p>
+                  )}
+                </div>
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              Bagikan kode ini agar pedagang lain bisa bergabung ke kelompok Anda.
-            </p>
           </div>
+          
+          <Alert className="bg-blue-50 border-blue-200">
+            <AlertCircle className="h-4 w-4 text-blue-600" />
+            <AlertTitle className="text-blue-800">Informasi</AlertTitle>
+            <AlertDescription className="text-blue-700">
+              Sebagai anggota, verifikator ini akan membantu memvalidasi produk dan transaksi Anda. Hubungi nomor di atas jika Anda memerlukan bantuan.
+            </AlertDescription>
+          </Alert>
         </CardContent>
-        <CardFooter>
-          <Button variant="outline" className="text-destructive border-destructive hover:bg-destructive/10" onClick={handleLeaveGroup} disabled={isLoading}>
-            {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-            Keluar dari Kelompok
-          </Button>
-        </CardFooter>
       </Card>
     );
   }
 
+  // State 2: Belum bergabung (Form Pencarian)
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Users className="w-5 h-5 text-primary" />
-          Kelompok Dagang
+          <Users className="h-5 w-5" />
+          Gabung Kelompok Dagang
         </CardTitle>
         <CardDescription>
-          Bergabung dengan kelompok dagang komunitas untuk saling berkolaborasi, atau buat kelompok Anda sendiri.
+          Cari verifikator menggunakan kode referal untuk bergabung dengan kelompok dagang.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="space-y-3">
-          <h3 className="font-medium text-sm">Buat Kelompok Baru</h3>
-          <div className="flex gap-2">
-            <Input
-              placeholder="Masukkan nama kelompok..."
-              value={groupName}
-              onChange={(e) => setGroupName(e.target.value)}
-              disabled={isLoading}
-            />
-            <Button onClick={handleCreateGroup} disabled={isLoading || !groupName.trim()}>
-              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
-              Buat
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Kode referral kelompok akan dibuat otomatis setelah Anda menekan tombol Buat.
-          </p>
+      <CardContent className="space-y-4">
+        <div className="flex gap-2">
+          <Input
+            placeholder="Masukkan Kode Referal (contoh: SU92BDXJ)"
+            value={searchCode}
+            onChange={(e) => setSearchCode(e.target.value)}
+            className="uppercase"
+          />
+          <Button onClick={searchVerifikator} disabled={loading}>
+            {loading ? "Mencari..." : <Search className="h-4 w-4" />}
+          </Button>
         </div>
 
-        <div className="relative py-2">
-          <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t border-muted" />
-          </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-card px-2 text-muted-foreground font-medium">Atau</span>
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          <h3 className="font-medium text-sm">Bergabung ke Kelompok</h3>
-          <div className="flex gap-2">
-            <Input
-              placeholder="Masukkan kode unik (cth: G-A1B2C3)"
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-              disabled={isLoading}
-              className="uppercase"
-            />
-            <Button variant="secondary" onClick={handleJoinGroup} disabled={isLoading || !joinCode.trim()}>
-              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4 mr-2" />}
-              Gabung
+        {verifikator && (
+          <div className="bg-slate-50 p-4 rounded-lg border space-y-3 animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-start justify-between">
+              <div>
+                <h4 className="font-semibold">{verifikator.business_name || verifikator.full_name}</h4>
+                <p className="text-sm text-muted-foreground">{verifikator.address || "Alamat tidak tersedia"}</p>
+                <p className="text-xs text-muted-foreground mt-1">Kode: {verifikator.referral_code}</p>
+              </div>
+            </div>
+            <Button className="w-full" onClick={joinGroup} disabled={loading}>
+              Gabung dengan Kelompok Ini
             </Button>
           </div>
-        </div>
+        )}
       </CardContent>
     </Card>
   );
-}
+};
