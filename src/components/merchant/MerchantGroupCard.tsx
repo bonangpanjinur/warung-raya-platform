@@ -6,7 +6,8 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Users, Copy, Plus, LogIn, Loader2 } from "lucide-react";
 
-export default function MerchantGroupCard() {
+// UBAH: Gunakan named export agar sesuai dengan import { MerchantGroupCard } di dashboard
+export function MerchantGroupCard() {
   const [isLoading, setIsLoading] = useState(false);
   const [groupName, setGroupName] = useState("");
   const [joinCode, setJoinCode] = useState("");
