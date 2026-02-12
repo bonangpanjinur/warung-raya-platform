@@ -26,18 +26,44 @@ export function MerchantGroupCard() {
       // Cari profil merchant milik user
       const { data: merchant } = await supabase
         .from('merchants')
-        .select('id, trade_group_id')
+        .select('id, trade_group_id, verifikator_code')
         .eq('user_id', user.id)
         .maybeSingle();
 
-      if (merchant?.trade_group_id) {
-        const { data: group } = await supabase
-          .from('trade_groups')
-          .select('*')
-          .eq('id', merchant.trade_group_id)
-          .single();
-        
-        setCurrentGroup(group);
+      if (merchant) {
+        // 1. Cek via trade_group_id (hubungan langsung)
+        if (merchant.trade_group_id) {
+          const { data: group } = await supabase
+            .from('trade_groups')
+            .select('*')
+            .eq('id', merchant.trade_group_id)
+            .single();
+          
+          if (group) {
+            setCurrentGroup(group);
+            return;
+          }
+        }
+
+        // 2. Cek via verifikator_code (hubungan tidak langsung melalui kode)
+        if (merchant.verifikator_code) {
+          // Cari trade_group yang memiliki kode yang sama dengan verifikator_code merchant
+          const { data: group } = await supabase
+            .from('trade_groups')
+            .select('*')
+            .eq('code', merchant.verifikator_code.toUpperCase())
+            .maybeSingle();
+          
+          if (group) {
+            setCurrentGroup(group);
+            
+            // Opsional: Sinkronkan trade_group_id ke tabel merchants untuk performa ke depan
+            await supabase
+              .from('merchants')
+              .update({ trade_group_id: group.id })
+              .eq('id', merchant.id);
+          }
+        }
       }
     } catch (error) {
       console.error("Error fetching group:", error);
