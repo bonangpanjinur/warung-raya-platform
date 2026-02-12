@@ -32,10 +32,10 @@ export function AdminLayout({ children, title, subtitle, rightElement }: AdminLa
       // Clear local system caches
       await clearAllSystemCache();
       
-      toast.success('Cache sistem berhasil diperbarui');
+      toast.success('Data sistem berhasil disegarkan');
     } catch (error) {
-      console.error('Error refreshing cache:', error);
-      toast.error('Gagal memperbarui cache');
+      console.error('Error refreshing data:', error);
+      toast.error('Gagal menyegarkan data');
     } finally {
       setIsRefreshing(false);
     }
@@ -140,7 +140,7 @@ export function AdminLayout({ children, title, subtitle, rightElement }: AdminLa
               className={cn("h-8 w-8 rounded-full border border-border bg-secondary text-secondary-foreground hover:scale-105 transition", isRefreshing && "animate-spin")}
               onClick={handleRefreshCache}
               disabled={isRefreshing}
-              title="Refresh Cache"
+              title="Segarkan Data"
             >
               <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
             </Button>
