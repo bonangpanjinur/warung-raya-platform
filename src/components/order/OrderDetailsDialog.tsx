@@ -7,7 +7,12 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatPrice } from '@/lib/utils';
-import { User, Phone, MapPin, CreditCard, Check, X, Truck, Printer, ImageIcon, CheckCircle } from 'lucide-react';
+import { User, Phone, MapPin, CreditCard, Check, X, Truck, Printer, Store, CheckCircle } from 'lucide-react';
+import { useState } from 'react';
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface OrderItem {
   id: string;
@@ -21,7 +26,6 @@ interface OrderRow {
   id: string;
   status: string;
   payment_status: string | null;
-  payment_proof_url?: string | null;
   delivery_type: string;
   delivery_name: string | null;
   delivery_phone: string | null;
@@ -32,7 +36,8 @@ interface OrderRow {
   notes: string | null;
   created_at: string;
   courier_id: string | null;
-  merchants: { name: string } | null;
+  merchants?: { name: string } | null;
+  is_self_delivery?: boolean;
 }
 
 interface OrderDetailsDialogProps {
@@ -41,7 +46,6 @@ interface OrderDetailsDialogProps {
   order: OrderRow | null;
   orderItems: OrderItem[];
   onUpdateStatus: (orderId: string, newStatus: string) => void;
-  onVerifyPayment?: (orderId: string) => void;
   onOpenAssignCourier: (order: OrderRow) => void;
   getStatusBadge: (status: string) => React.ReactNode;
   getPaymentBadge: (paymentStatus: string | null) => React.ReactNode;
@@ -53,11 +57,13 @@ export function OrderDetailsDialog({
   order,
   orderItems,
   onUpdateStatus,
-  onVerifyPayment,
   onOpenAssignCourier,
   getStatusBadge,
   getPaymentBadge,
 }: OrderDetailsDialogProps) {
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [deliveryType, setDeliveryType] = useState<"courier" | "self">("courier");
+
   if (!order) return null;
 
   const handlePrint = () => {
@@ -154,6 +160,56 @@ export function OrderDetailsDialog({
     printWindow.document.close();
   };
 
+  // Custom handler for processing order and setting the self delivery flag
+  const handleProcessOrder = async () => {
+    try {
+      setIsProcessing(true);
+      const isSelfDelivery = deliveryType === "self";
+      const newStatus = isSelfDelivery ? "DELIVERING" : "PROCESSED";
+
+      const { error } = await supabase
+        .from('orders')
+        .update({ 
+          status: newStatus,
+          is_self_delivery: isSelfDelivery
+        })
+        .eq('id', order.id);
+
+      if (error) throw error;
+      
+      toast.success(isSelfDelivery ? 'Pesanan diproses untuk diantar sendiri!' : 'Pesanan diproses, mencari kurir.');
+      
+      // Update parent component status optimistically
+      onUpdateStatus(order.id, newStatus);
+      onOpenChange(false);
+    } catch (err) {
+      console.error(err);
+      toast.error('Gagal memproses pesanan');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleCompleteSelfDelivery = async () => {
+    try {
+      setIsProcessing(true);
+      const { error } = await supabase
+        .from('orders')
+        .update({ status: 'DONE' }) // Menggunakan DONE karena format sebelumnya pakai ini
+        .eq('id', order.id);
+
+      if (error) throw error;
+      
+      toast.success('Pesanan selesai!');
+      onUpdateStatus(order.id, 'DONE');
+      onOpenChange(false);
+    } catch (e) {
+      toast.error('Gagal menyelesaikan pesanan');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
@@ -178,6 +234,14 @@ export function OrderDetailsDialog({
               {getPaymentBadge(order.payment_status)}
             </div>
           </div>
+
+          {/* Self Delivery Indicator */}
+          {order.is_self_delivery && (
+            <div className="flex items-center gap-2 p-3 bg-blue-50 text-blue-700 rounded-lg text-sm border border-blue-100">
+              <Store className="w-4 h-4" />
+              <span className="font-medium">Pengiriman Mandiri (Diantar Toko)</span>
+            </div>
+          )}
 
           {/* Merchant */}
           <div className="bg-secondary/50 rounded-lg p-3">
@@ -237,25 +301,6 @@ export function OrderDetailsDialog({
             </div>
           )}
 
-          {/* Payment Proof */}
-          {order.payment_proof_url && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">Bukti Pembayaran</span>
-              </div>
-              <div className="relative rounded-lg overflow-hidden border border-border">
-                <img
-                  src={order.payment_proof_url}
-                  alt="Bukti pembayaran"
-                  className="w-full max-h-64 object-contain bg-secondary/30 cursor-pointer"
-                  onClick={() => window.open(order.payment_proof_url!, '_blank')}
-                />
-              </div>
-              <p className="text-xs text-muted-foreground text-center">Klik gambar untuk memperbesar</p>
-            </div>
-          )}
-
           {/* Totals */}
           <div className="border-t border-border pt-4 space-y-2">
             <div className="flex justify-between text-sm">
@@ -273,67 +318,91 @@ export function OrderDetailsDialog({
           </div>
 
           {/* Action Buttons */}
-          <div className="flex flex-wrap gap-2 pt-2">
-            {/* Payment verification for PENDING_PAYMENT */}
-            {order.status === 'PENDING_PAYMENT' && onVerifyPayment && (
-              <div className="w-full space-y-2">
-                {order.payment_proof_url ? (
-                  <Button 
-                    className="w-full"
-                    onClick={() => onVerifyPayment(order.id)}
+          <div className="flex flex-col gap-2 pt-2">
+            {order.status === 'NEW' && (
+              <div className="space-y-3">
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                  <Label className="text-sm font-semibold mb-3 block">Metode Pengiriman:</Label>
+                  <RadioGroup 
+                    value={deliveryType} 
+                    onValueChange={(v) => setDeliveryType(v as "courier" | "self")}
+                    className="flex flex-col space-y-2"
                   >
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                    Verifikasi Pembayaran
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="courier" id="r-courier" />
+                      <Label htmlFor="r-courier" className="flex items-center gap-2 cursor-pointer font-normal text-sm">
+                        <Truck className="w-4 h-4 text-muted-foreground" />
+                        Cari Kurir Aplikasi (Standar)
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="self" id="r-self" />
+                      <Label htmlFor="r-self" className="flex items-center gap-2 cursor-pointer font-normal text-sm">
+                        <Store className="w-4 h-4 text-muted-foreground" />
+                        Antar Sendiri ke Alamat
+                      </Label>
+                    </div>
+                  </RadioGroup>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button 
+                    className="flex-1"
+                    onClick={handleProcessOrder}
+                    disabled={isProcessing}
+                  >
+                    <Check className="h-4 w-4 mr-2" />
+                    {isProcessing ? "Memproses..." : (deliveryType === "self" ? "Proses & Antar" : "Terima & Cari Kurir")}
                   </Button>
-                ) : (
-                  <div className="w-full bg-muted/50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-muted-foreground">
-                      Menunggu pembeli mengunggah bukti pembayaran
-                    </p>
-                  </div>
-                )}
-                <Button 
-                  variant="destructive"
-                  className="w-full"
-                  onClick={() => onUpdateStatus(order.id, 'CANCELLED')}
-                >
-                  <X className="h-4 w-4 mr-2" />
-                  Tolak Pesanan
-                </Button>
+                  <Button 
+                    variant="destructive"
+                    onClick={() => onUpdateStatus(order.id, 'CANCELLED')}
+                    disabled={isProcessing}
+                  >
+                    <X className="h-4 w-4 mr-2" />
+                    Tolak
+                  </Button>
+                </div>
               </div>
             )}
-            {(order.status === 'NEW' || order.status === 'PENDING_CONFIRMATION') && (
-              <>
-                <Button 
-                  className="flex-1"
-                  onClick={() => onUpdateStatus(order.id, 'PROCESSED')}
-                >
-                  <Check className="h-4 w-4 mr-2" />
-                  Terima & Proses
-                </Button>
-                <Button 
-                  variant="destructive"
-                  onClick={() => onUpdateStatus(order.id, 'CANCELLED')}
-                >
-                  <X className="h-4 w-4 mr-2" />
-                  Tolak
-                </Button>
-              </>
-            )}
-            {order.status === 'PROCESSED' && (
+            
+            {/* Opsi selesaikan khusus pengiriman mandiri */}
+            {order.status === 'DELIVERING' && order.is_self_delivery && (
               <Button 
-                className="flex-1"
+                className="w-full bg-green-600 hover:bg-green-700" 
+                onClick={handleCompleteSelfDelivery}
+                disabled={isProcessing}
+              >
+                <CheckCircle className="h-4 w-4 mr-2" />
+                {isProcessing ? "Memproses..." : "Pesanan Sudah Sampai (Selesai)"}
+              </Button>
+            )}
+
+            {/* Opsi standar jika bukan kirim mandiri */}
+            {order.status === 'PROCESSED' && !order.is_self_delivery && (
+              <Button 
+                className="w-full"
                 onClick={() => onUpdateStatus(order.id, 'SENT')}
               >
                 <Truck className="h-4 w-4 mr-2" />
                 Kirim
               </Button>
             )}
-            {/* Pesanan hanya bisa diselesaikan oleh pembeli atau otomatis oleh sistem */}
-            {order.delivery_type === 'INTERNAL' && !order.courier_id && (
+            
+            {order.status === 'SENT' && !order.is_self_delivery && (
+              <Button 
+                className="w-full"
+                onClick={() => onUpdateStatus(order.id, 'DONE')}
+              >
+                <Check className="h-4 w-4 mr-2" />
+                Selesai
+              </Button>
+            )}
+
+            {order.delivery_type === 'INTERNAL' && !order.courier_id && !order.is_self_delivery && order.status === 'PROCESSED' && (
               <Button 
                 variant="outline"
-                className="w-full"
+                className="w-full mt-2"
                 onClick={() => {
                   onOpenChange(false);
                   onOpenAssignCourier(order);

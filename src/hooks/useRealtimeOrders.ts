@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
-interface OrderRow {
+export interface OrderRow {
   id: string;
   status: string;
   payment_status: string | null;
@@ -16,19 +16,19 @@ interface OrderRow {
   total: number;
   notes: string | null;
   created_at: string;
-  payment_proof_url: string | null;
+  courier_id: string | null;
+  merchants?: { name: string } | null;
+  is_self_delivery?: boolean; // Fitur Antar Sendiri
 }
 
 interface UseRealtimeOrdersOptions {
   merchantId: string | null;
-  soundEnabled?: boolean;
   onNewOrder?: (order: OrderRow) => void;
   onOrderUpdate?: (order: OrderRow) => void;
 }
 
 export function useRealtimeOrders({ 
   merchantId, 
-  soundEnabled = true,
   onNewOrder,
   onOrderUpdate 
 }: UseRealtimeOrdersOptions) {
@@ -45,7 +45,7 @@ export function useRealtimeOrders({
       setLoading(true);
       const { data, error } = await supabase
         .from('orders')
-        .select('*')
+        .select('*, merchants(name)')
         .eq('merchant_id', merchantId)
         .order('created_at', { ascending: false });
 
@@ -81,10 +81,8 @@ export function useRealtimeOrders({
           const newOrder = payload.new as OrderRow;
           setOrders((prev) => [newOrder, ...prev]);
           
-          // Play notification sound for new orders if enabled
-          if (soundEnabled) {
-            playNotificationSound();
-          }
+          // Play notification sound for new orders
+          playNotificationSound();
           
           toast.info('Pesanan baru masuk!', {
             description: `Pesanan dari ${newOrder.delivery_name || 'Pelanggan'}`,
@@ -109,7 +107,7 @@ export function useRealtimeOrders({
           const updatedOrder = payload.new as OrderRow;
           setOrders((prev) =>
             prev.map((order) =>
-              order.id === updatedOrder.id ? updatedOrder : order
+              order.id === updatedOrder.id ? { ...order, ...updatedOrder } : order
             )
           );
           
