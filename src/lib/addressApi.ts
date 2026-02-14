@@ -94,10 +94,19 @@ const STATIC_PROVINCES: Region[] = [
 
 const BASE_URL = 'https://wilayah.id/api';
 
+async function fetchWithRetry(fetchFn: () => Promise<Response | null>, retries = 1): Promise<Response | null> {
+  for (let i = 0; i <= retries; i++) {
+    const result = await fetchFn();
+    if (result) return result;
+    if (i < retries) await new Promise(r => setTimeout(r, 1000));
+  }
+  return null;
+}
+
 async function fetchDirect(url: string): Promise<Response | null> {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
     
     const response = await fetch(url, {
       headers: { 'Accept': 'application/json' },
@@ -123,7 +132,7 @@ async function fetchViaEdgeFunction(type: string, code?: string): Promise<Respon
     if (code) params.append('code', code);
     
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
     
     const response = await fetch(`${projectUrl}/functions/v1/wilayah-proxy?${params.toString()}`, {
       headers: {
@@ -144,7 +153,7 @@ async function fetchViaEdgeFunction(type: string, code?: string): Promise<Respon
 async function fetchViaCorsProxy(url: string): Promise<Response | null> {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
     
     const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
     const response = await fetch(proxyUrl, {
@@ -169,14 +178,15 @@ async function fetchWithFallbacks(type: string, code?: string): Promise<Region[]
     default: return [];
   }
 
-  // Try direct -> Edge Function -> CORS Proxy
-  let response = await fetchDirect(url);
-  if (!response) response = await fetchViaEdgeFunction(type, code);
-  if (!response) response = await fetchViaCorsProxy(url);
+  // Try direct -> Edge Function -> CORS Proxy (with retry each)
+  let response = await fetchWithRetry(() => fetchDirect(url));
+  if (!response) response = await fetchWithRetry(() => fetchViaEdgeFunction(type, code));
+  if (!response) response = await fetchWithRetry(() => fetchViaCorsProxy(url));
 
   if (!response) {
     if (type === 'provinces') return STATIC_PROVINCES;
-    throw new Error('All fetch strategies failed');
+    console.warn(`All fetch strategies failed for ${type}/${code}`);
+    return [];
   }
 
   const result: WilayahResponse = await response.json();
