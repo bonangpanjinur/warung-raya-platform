@@ -81,6 +81,24 @@ export function MerchantLocationPicker({
     );
   }, [onChange]);
 
+  // Auto-detect GPS on mount if no value set
+  useEffect(() => {
+    if (!value && navigator.geolocation) {
+      setLoading(true);
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          onChange({ lat: position.coords.latitude, lng: position.coords.longitude });
+          setLoading(false);
+        },
+        () => {
+          setLoading(false);
+          // Fallback to default (Tasikmalaya) silently
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    }
+  }, []); // Only on mount
+
   const handleMapClick = useCallback((lat: number, lng: number) => {
     if (!disabled) {
       onChange({ lat, lng });

@@ -315,7 +315,7 @@ export default function RegisterMerchantPage() {
 
       const { error } = await supabase.from('merchants').insert({
         name: data.name.trim(),
-        // user_id is automatically handled by Supabase Trigger (on_merchant_signup)
+        user_id: user.id,
         village_id: matchedVillage?.id || null,
         address: data.addressDetail.trim(),
         province: provinceName,
@@ -445,20 +445,6 @@ export default function RegisterMerchantPage() {
                 {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="verifikator_code">Kode Verifikator (Opsional)</Label>
-                <div className="relative">
-                  <ShieldCheck className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input 
-                    id="verifikator_code"
-                    className="pl-9 uppercase" 
-                    placeholder="Masukkan kode verifikator jika ada" 
-                    value={referralCode}
-                    onChange={(e) => setReferralCode(e.target.value)}
-                  />
-                </div>
-                <p className="text-[10px] text-muted-foreground">Sama dengan Kode Referral di atas.</p>
-              </div>
 
             <div className="space-y-2">
               <Label>Kategori Usaha</Label>
