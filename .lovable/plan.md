@@ -1,183 +1,133 @@
 
+# Rencana Perbaikan Menyeluruh: Pendaftaran UMKM, Lokasi, dan Manajemen User
 
-# Rencana Perbaikan: Desa Wisata, Verifikator Iuran, Merchant Group, dan Build Errors
+## Ringkasan 5 Masalah
 
-## Ringkasan
-
-Ada 3 permintaan utama + perbaikan build errors yang harus diselesaikan terlebih dahulu agar aplikasi bisa berjalan.
+| No | Masalah | Akar Penyebab |
+|----|---------|---------------|
+| 1 | Kode referral muncul 2x di form pendaftaran UMKM | Ada 2 input terpisah untuk hal yang sama (baris 396-433 dan baris 448-461) |
+| 2 | Dropdown lokasi sering gagal/lambat di jaringan lemah | Timeout terlalu pendek (5 detik), tidak ada retry, dan tidak ada loading indicator yang jelas |
+| 3 | Titik lokasi toko harus otomatis terisi | Saat ini hanya manual klik peta, tidak ada auto-detect GPS saat halaman dibuka |
+| 4 | User baru tidak tercatat di manajemen user | **Trigger `handle_new_user` tidak terpasang ke `auth.users`** -- fungsi ada tapi trigger-nya hilang, jadi profile dan role tidak dibuat otomatis |
+| 5 | Toko yang didaftarkan dari akun user harus otomatis terhubung | Insert ke `merchants` tidak menyertakan `user_id = auth.uid()` |
 
 ---
 
-## Fase 0: Perbaikan Build Errors (Wajib Pertama)
+## Fase 1: Fix Trigger User Baru (Masalah #4) -- PRIORITAS TERTINGGI
 
-Saat ini aplikasi tidak bisa di-build karena banyak error TypeScript. Berikut semua yang perlu diperbaiki:
+**Ini adalah bug paling kritis.** Fungsi `handle_new_user()` sudah ada di database tapi tidak ada trigger yang menghubungkannya ke tabel `auth.users`. Akibatnya:
+- Profil tidak dibuat otomatis saat signup
+- Role `buyer` tidak ditambahkan
+- User tidak muncul di halaman admin
 
-### 0.1 Kolom dan tabel yang belum ada di database
-
-| Masalah | Solusi |
-|---------|--------|
-| `has_review` tidak ada di tabel `orders` | Tambah kolom `has_review BOOLEAN DEFAULT false` |
-| `halal_status`, `halal_certificate_url`, `ktp_url` tidak ada di tabel `merchants` | Tambah 3 kolom ini |
-| Tabel `halal_regulations` tidak ada | Buat tabel sederhana dengan kolom `id`, `content`, `updated_at` |
-| Fungsi `increment_product_view` tidak ada | Buat fungsi RPC ini |
-
-### 0.2 Perbaikan kode TypeScript
-
-| File | Masalah | Solusi |
-|------|---------|--------|
-| `OrdersPage.tsx` | Query `has_review` yang belum ada | Akan fix setelah migration menambah kolom |
-| `ProductDetail.tsx` | Query `halal_status` + RPC `increment_product_view` | Akan fix setelah migration |
-| `AdminHalalManagementPage.tsx` | Query kolom `halal_status` yang belum ada | Akan fix setelah migration |
-| `AdminHalalRegulationPage.tsx` | Tabel `halal_regulations` belum ada | Akan fix setelah migration |
-| `AdminOrdersPage.tsx` | Prop `onVerifyPayment` tidak ada di `OrderDetailsDialog` | Hapus prop yang tidak diperlukan |
-| `MerchantOrdersPage.tsx` | Tipe `OrderRow` lokal punya `payment_proof_url` tapi `useRealtimeOrders.OrderRow` tidak | Tambah `payment_proof_url` ke hook, atau selaraskan tipe |
-| `HalalRegistrationInfo.tsx` | Akses tabel `halal_regulations` | Akan fix setelah migration |
-
-### SQL Migration untuk Fase 0
-
+**SQL Migration:**
 ```text
--- 1. Tambah kolom di orders
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS has_review BOOLEAN DEFAULT false;
-
--- 2. Tambah kolom di merchants
-ALTER TABLE merchants ADD COLUMN IF NOT EXISTS halal_status TEXT DEFAULT 'NONE';
-ALTER TABLE merchants ADD COLUMN IF NOT EXISTS halal_certificate_url TEXT;
-ALTER TABLE merchants ADD COLUMN IF NOT EXISTS ktp_url TEXT;
-
--- 3. Buat tabel halal_regulations
-CREATE TABLE IF NOT EXISTS halal_regulations (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  content TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE halal_regulations ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Anyone can read" ON halal_regulations FOR SELECT USING (true);
-CREATE POLICY "Admin can manage" ON halal_regulations FOR ALL USING (public.is_admin());
-
--- 4. Fungsi increment_product_view
-CREATE OR REPLACE FUNCTION increment_product_view(product_id UUID)
-RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$
-BEGIN
-  UPDATE products SET view_count = COALESCE(view_count, 0) + 1 WHERE id = product_id;
-END;
-$$;
-
--- 5. Tambah payment_proof_url jika belum (sudah ada, skip)
+-- Pasang trigger yang hilang
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_new_user();
 ```
 
-### Perbaikan Kode (Fase 0)
-
-- **`AdminOrdersPage.tsx`** - Hapus prop `onVerifyPayment` dari `OrderDetailsDialog`
-- **`useRealtimeOrders.ts`** - Tambah `payment_proof_url` ke interface `OrderRow`
-- **`MerchantOrdersPage.tsx`** - Selaraskan tipe dengan hook (hapus duplikat interface, gunakan dari hook)
+**File:** SQL Migration baru
 
 ---
 
-## Fase 1: Perbaikan User Desa Wisata
+## Fase 2: Hapus Redundansi Kode Referral (Masalah #1)
 
-### Mekanisme koneksi desa ke user:
+Di `RegisterMerchantPage.tsx` ada 2 tempat input kode referral/verifikator:
 
-**Jalur 1 - Pendaftaran mandiri (sudah ada, perlu diperkuat):**
-1. User daftar akun biasa (role: buyer)
-2. User buka halaman `/register/village` dan isi form
-3. Sistem insert ke `villages` (status PENDING) + `user_villages` + otomatis set `user_id`
-4. Admin approve dari dashboard -> sistem tambahkan role `admin_desa` ke user tersebut
+1. **Section "Kode Referral"** (baris 396-433) -- input lengkap dengan validasi, status badge
+2. **Section "Informasi Usaha"** (baris 448-461) -- input kedua berlabel "Kode Verifikator" yang mengarah ke state yang sama
 
-**Jalur 2 - Admin menautkan user ke desa:**
-1. Admin buka detail desa di dashboard admin
-2. Admin pilih user dari dropdown (cari by nama/email)
-3. Sistem insert ke `user_villages` + tambah role `admin_desa`
+Keduanya menggunakan `referralCode` state yang sama, jadi sebenarnya redundan.
 
-### Perubahan yang diperlukan:
+**Solusi:** Hapus input kedua (baris 448-461) karena section pertama sudah lengkap dengan validasi dan feedback visual.
 
-**Database:**
-- Trigger/logic saat admin approve village -> otomatis tambah role `admin_desa` ke `user_id` village
-
-**File yang diubah:**
-- `src/components/admin/VillageEditDialog.tsx` - Perbaiki pencarian user (gunakan `full_name` bukan `email`), tambah assign user
-- `src/pages/admin/AdminVillagesPage.tsx` - Saat approve, otomatis tambah role `admin_desa` via insert ke `user_roles`
-- `src/pages/desa/DesaDashboardPage.tsx` - Tambah fallback: jika tidak ada di `user_villages`, cek `villages.user_id`
+**File:** `src/pages/RegisterMerchantPage.tsx`
 
 ---
 
-## Fase 2: Perbaikan Dashboard Verifikator - Catatan Iuran
+## Fase 3: Perbaikan Dropdown Lokasi untuk Jaringan Lemah (Masalah #2)
 
-### Saat ini sudah ada:
-- Tabel `kas_payments` dengan kolom lengkap
-- Generate tagihan bulanan via RPC `generate_monthly_kas`
-- Mark as paid/unpaid di dashboard verifikator
+Masalah saat ini di `addressApi.ts`:
+- Timeout direct fetch hanya 5 detik, edge function 8 detik
+- Jika semua gagal, user tidak tahu harus apa (hanya error di console)
+- Tidak ada retry otomatis
 
-### Yang perlu ditambahkan:
+**Perbaikan di `src/lib/addressApi.ts`:**
+1. Naikkan timeout: direct 10 detik, edge function 15 detik, CORS proxy 15 detik
+2. Tambah retry otomatis (1x retry per strategi sebelum pindah ke fallback berikutnya)
+3. Jika semua gagal, return array kosong dengan pesan yang jelas, bukan throw error
 
-**Di sisi Verifikator:**
-1. **Ringkasan iuran per merchant** - Tabel yang menampilkan: nama merchant, total bulan terbayar, total bulan belum bayar, total nominal terbayar
-2. **Pengingat pembayaran** - Tombol "Kirim Pengingat" per merchant yang belum bayar (via notifikasi in-app menggunakan tabel `notifications`)
-3. **Riwayat lengkap** - Filter by merchant tertentu untuk lihat semua bulan
+**Perbaikan di `src/pages/RegisterMerchantPage.tsx`:**
+1. Tambah tombol "Coba Lagi" jika dropdown gagal dimuat
+2. Tampilkan skeleton/spinner yang lebih jelas saat loading
+3. Tambah pesan "Koneksi lambat, mohon tunggu..." jika loading lebih dari 3 detik
 
-**Di sisi Merchant:**
-1. **Kartu iuran di MerchantSettingsPage atau MerchantDashboardPage** - Menampilkan:
-   - Total iuran terbayar (berapa kali)
-   - Iuran bulan ini: LUNAS / BELUM BAYAR
-   - Riwayat pembayaran (daftar bulan)
-2. Query dari `kas_payments` dimana `merchant_id` = merchant si user
-
-### File yang diubah/dibuat:
-- `src/pages/verifikator/VerifikatorDashboardPage.tsx` - Tambah section ringkasan per-merchant + tombol pengingat
-- `src/components/merchant/MerchantKasCard.tsx` (baru) - Kartu iuran kas untuk merchant
-- `src/pages/merchant/MerchantDashboardPage.tsx` - Tampilkan `MerchantKasCard` jika merchant punya group
+**File:** `src/lib/addressApi.ts`, `src/pages/RegisterMerchantPage.tsx`
 
 ---
 
-## Fase 3: Merchant Otomatis Terhubung Jika Didaftarkan Admin
+## Fase 4: Auto-detect Lokasi GPS untuk Titik Toko (Masalah #3)
 
-### Masalah:
-Jika admin mendaftarkan merchant dengan kode verifikator dari dashboard admin, di sisi merchant masih muncul tampilan "Gabung dengan Kode" padahal seharusnya sudah terhubung.
+Di `MerchantLocationPicker.tsx`, GPS hanya aktif saat user menekan tombol "Lokasi Saya".
 
-### Akar masalah:
-`MerchantGroupCard.tsx` sudah mengecek `verifikator_id`, `group_id`, dan `verifikator_code`. Jika admin sudah set salah satu dari ini, seharusnya sudah tampil "terhubung". Yang perlu dipastikan:
+**Perbaikan:**
+1. Saat komponen pertama kali dimuat dan belum ada `value`, otomatis panggil `navigator.geolocation.getCurrentPosition`
+2. Set lokasi dari GPS sebagai nilai awal
+3. User masih bisa klik peta untuk menggeser titik secara manual
+4. Tambah fallback: jika GPS ditolak/gagal, tetap tampilkan peta di posisi default (Tasikmalaya)
 
-1. **Admin panel saat approve/edit merchant** harus mengisi field `verifikator_code` dan/atau `verifikator_id` ke tabel `merchants`
-2. **Trigger `auto_assign_merchant_to_group`** sudah ada di database - pastikan aktif saat UPDATE (bukan hanya INSERT)
+**File:** `src/components/merchant/MerchantLocationPicker.tsx`
 
-### Perbaikan:
-- Pastikan trigger `auto_assign_merchant_to_group` berjalan pada UPDATE juga (saat admin edit merchant)
-- Di `MerchantGroupCard` tidak perlu perubahan - logic deteksi sudah benar
+---
 
-### File yang diubah:
-- SQL migration: pastikan trigger `auto_assign_merchant_to_group` attach ke BEFORE INSERT OR UPDATE
-- `src/pages/admin/AdminMerchantDetailPage.tsx` - Pastikan saat admin assign kode verifikator, field `verifikator_id` juga terisi
+## Fase 5: Otomatis Hubungkan Merchant ke Akun User (Masalah #5)
+
+Saat ini di `RegisterMerchantPage.tsx` baris 318, ada komentar:
+```
+// user_id is automatically handled by Supabase Trigger
+```
+Tapi **tidak ada trigger yang melakukan ini**. `user_id` tidak pernah dikirim saat insert.
+
+**Perbaikan:** Tambahkan `user_id: user.id` ke objek insert di `RegisterMerchantPage.tsx`:
+```text
+const { error } = await supabase.from('merchants').insert({
+  user_id: user.id,  // <-- tambahkan ini
+  name: data.name.trim(),
+  ...
+});
+```
+
+**File:** `src/pages/RegisterMerchantPage.tsx`
 
 ---
 
 ## Urutan Implementasi
 
-1. **SQL Migration** - Tambah kolom, tabel, fungsi yang missing (Fase 0)
-2. **Fix build errors** - Perbaiki semua file TypeScript yang error (Fase 0)
-3. **Desa wisata user linking** - Auto role assignment + admin UI (Fase 1)
-4. **Catatan iuran verifikator + merchant** - UI baru (Fase 2)
-5. **Auto-connect merchant** - Trigger fix + admin panel (Fase 3)
+1. SQL Migration -- pasang trigger `on_auth_user_created` (Fase 1)
+2. `src/pages/RegisterMerchantPage.tsx` -- hapus redundansi referral + tambah `user_id` + perbaiki UX loading (Fase 2, 3, 5)
+3. `src/lib/addressApi.ts` -- perbaiki timeout dan retry (Fase 3)
+4. `src/components/merchant/MerchantLocationPicker.tsx` -- auto GPS (Fase 4)
 
 ---
 
-## Detail Teknis - File yang Diubah
+## Detail Teknis
 
-**Dibuat baru:**
-- `src/components/merchant/MerchantKasCard.tsx`
+### File yang Diubah
 
-**Diubah:**
-- SQL Migration (1 file baru)
-- `src/integrations/supabase/types.ts` (auto-update setelah migration)
-- `src/pages/OrdersPage.tsx`
-- `src/pages/ProductDetail.tsx`
-- `src/pages/admin/AdminOrdersPage.tsx`
-- `src/pages/admin/AdminHalalManagementPage.tsx`
-- `src/pages/admin/AdminHalalRegulationPage.tsx`
-- `src/components/merchant/HalalRegistrationInfo.tsx`
-- `src/hooks/useRealtimeOrders.ts`
-- `src/pages/merchant/MerchantOrdersPage.tsx`
-- `src/components/admin/VillageEditDialog.tsx`
-- `src/pages/desa/DesaDashboardPage.tsx`
-- `src/pages/verifikator/VerifikatorDashboardPage.tsx`
-- `src/pages/merchant/MerchantDashboardPage.tsx`
+| File | Perubahan |
+|------|-----------|
+| SQL Migration (baru) | Pasang trigger `on_auth_user_created` ke `auth.users` |
+| `src/pages/RegisterMerchantPage.tsx` | Hapus input referral duplikat (baris 448-461), tambah `user_id: user.id` di insert, tambah retry button untuk dropdown lokasi |
+| `src/lib/addressApi.ts` | Naikkan timeout (10s/15s), tambah retry per strategi, error handling lebih baik |
+| `src/components/merchant/MerchantLocationPicker.tsx` | Auto-detect GPS saat mount jika belum ada value |
 
+### Dampak
+
+- User baru langsung muncul di manajemen pengguna admin
+- Form pendaftaran UMKM lebih bersih tanpa duplikasi
+- Dropdown alamat lebih tahan di jaringan lemah
+- Titik toko otomatis terisi dari GPS
+- Merchant otomatis terhubung ke akun pendaftar
