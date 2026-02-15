@@ -161,6 +161,18 @@ async function fetchViaCorsProxy(url: string, signal?: AbortSignal): Promise<Res
   return null;
 }
 
+async function fetchViaCorsProxy2(url: string, signal?: AbortSignal): Promise<Response | null> {
+  try {
+    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+    const response = await fetch(proxyUrl, { signal });
+    if (response.ok) return response;
+  } catch (error) {
+    if ((error as Error).name === 'AbortError') throw error;
+    console.warn('CORS proxy 2 fetch failed:', error);
+  }
+  return null;
+}
+
 // Wrap a fetch function so it rejects (instead of resolving null) on failure
 async function mustSucceed(fn: () => Promise<Response | null>): Promise<Response> {
   const result = await fn();
@@ -181,8 +193,8 @@ async function fetchWithFallbacks(type: string, code?: string): Promise<Region[]
   const controller = new AbortController();
   const { signal } = controller;
 
-  // Auto-abort after 15s max
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  // Auto-abort after 10s max
+  const timeout = setTimeout(() => controller.abort(), 10000);
 
   try {
     // Race all three strategies in parallel — first success wins
@@ -190,6 +202,7 @@ async function fetchWithFallbacks(type: string, code?: string): Promise<Region[]
       mustSucceed(() => fetchDirect(url, signal)),
       mustSucceed(() => fetchViaEdgeFunction(type, code, signal)),
       mustSucceed(() => fetchViaCorsProxy(url, signal)),
+      mustSucceed(() => fetchViaCorsProxy2(url, signal)),
     ];
 
     // Use Promise.any polyfill pattern for ES2020 compat

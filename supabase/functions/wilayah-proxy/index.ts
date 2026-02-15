@@ -2,68 +2,21 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
 };
 
 const BASE_URL = 'https://wilayah.id/api';
 
-// In-memory cache with TTL
-const cache: Map<string, { data: unknown; timestamp: number }> = new Map();
-const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours - data rarely changes
-
-function getCached(key: string): unknown | null {
-  const cached = cache.get(key);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    return cached.data;
-  }
-  return null;
-}
-
-function setCache(key: string, data: unknown): void {
-  cache.set(key, { data, timestamp: Date.now() });
-}
-
-async function fetchWithRetry(url: string, retries = 2): Promise<Response> {
-  let lastError: Error | null = null;
-  
-  for (let i = 0; i <= retries; i++) {
-    try {
-      const response = await fetch(url, {
-        headers: {
-          'Accept': 'application/json',
-          'User-Agent': 'DesaApp/1.0',
-        },
-      });
-      
-      if (response.ok) {
-        return response;
-      }
-      
-      lastError = new Error(`HTTP ${response.status}: ${response.statusText}`);
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error('Network error');
-      
-      // Wait before retrying (exponential backoff)
-      if (i < retries) {
-        await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 500));
-      }
-    }
-  }
-  
-  throw lastError;
-}
-
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders });
   }
 
   try {
     const url = new URL(req.url);
-    const type = url.searchParams.get('type'); // provinces, regencies, districts, villages
-    const code = url.searchParams.get('code'); // parent code for sub-regions
+    const type = url.searchParams.get('type');
+    const code = url.searchParams.get('code');
 
     if (!type) {
       return new Response(
@@ -73,42 +26,37 @@ serve(async (req) => {
     }
 
     let apiUrl: string;
-    let cacheKey: string;
 
     switch (type) {
       case 'provinces':
         apiUrl = `${BASE_URL}/provinces.json`;
-        cacheKey = 'provinces';
         break;
       case 'regencies':
         if (!code) {
           return new Response(
-            JSON.stringify({ error: 'Missing code parameter for regencies' }),
+            JSON.stringify({ error: 'Missing code parameter' }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
         apiUrl = `${BASE_URL}/regencies/${code}.json`;
-        cacheKey = `regencies-${code}`;
         break;
       case 'districts':
         if (!code) {
           return new Response(
-            JSON.stringify({ error: 'Missing code parameter for districts' }),
+            JSON.stringify({ error: 'Missing code parameter' }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
         apiUrl = `${BASE_URL}/districts/${code}.json`;
-        cacheKey = `districts-${code}`;
         break;
       case 'villages':
         if (!code) {
           return new Response(
-            JSON.stringify({ error: 'Missing code parameter for villages' }),
+            JSON.stringify({ error: 'Missing code parameter' }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
         apiUrl = `${BASE_URL}/villages/${code}.json`;
-        cacheKey = `villages-${code}`;
         break;
       default:
         return new Response(
@@ -117,29 +65,26 @@ serve(async (req) => {
         );
     }
 
-    // Check cache first
-    const cached = getCached(cacheKey);
-    if (cached) {
-      console.log(`Cache hit for ${cacheKey}`);
-      return new Response(
-        JSON.stringify(cached),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json', 'X-Cache': 'HIT' } }
-      );
+    console.log(`Fetching: ${apiUrl}`);
+    const response = await fetch(apiUrl, {
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'DesaApp/1.0',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}`);
     }
 
-    console.log(`Fetching from API: ${apiUrl}`);
-    const response = await fetchWithRetry(apiUrl);
     const data = await response.json();
-
-    // Cache the response
-    setCache(cacheKey, data);
 
     return new Response(
       JSON.stringify(data),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json', 'X-Cache': 'MISS' } }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
-    console.error('Error in wilayah-proxy:', error);
+    console.error('Error:', error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'Internal server error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

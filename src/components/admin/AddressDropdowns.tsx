@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
+import { RefreshCw } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -58,6 +60,10 @@ export function AddressDropdowns({
   const [loadingRegencies, setLoadingRegencies] = useState(false);
   const [loadingDistricts, setLoadingDistricts] = useState(false);
   const [loadingVillages, setLoadingVillages] = useState(false);
+
+  const [errorRegencies, setErrorRegencies] = useState(false);
+  const [errorDistricts, setErrorDistricts] = useState(false);
+  const [errorVillages, setErrorVillages] = useState(false);
 
   // Load provinces on mount
   useEffect(() => {
@@ -154,11 +160,14 @@ export function AddressDropdowns({
 
   const loadRegencies = async (code: string) => {
     setLoadingRegencies(true);
+    setErrorRegencies(false);
     try {
       const data = await fetchRegencies(code);
       setRegencies(data);
+      if (data.length === 0) setErrorRegencies(true);
     } catch (error) {
       console.error('Error loading regencies:', error);
+      setErrorRegencies(true);
     } finally {
       setLoadingRegencies(false);
     }
@@ -166,11 +175,14 @@ export function AddressDropdowns({
 
   const loadDistricts = async (code: string) => {
     setLoadingDistricts(true);
+    setErrorDistricts(false);
     try {
       const data = await fetchDistricts(code);
       setDistricts(data);
+      if (data.length === 0) setErrorDistricts(true);
     } catch (error) {
       console.error('Error loading districts:', error);
+      setErrorDistricts(true);
     } finally {
       setLoadingDistricts(false);
     }
@@ -178,11 +190,14 @@ export function AddressDropdowns({
 
   const loadVillages = async (code: string) => {
     setLoadingVillages(true);
+    setErrorVillages(false);
     try {
       const data = await fetchVillages(code);
       setVillages(data);
+      if (data.length === 0) setErrorVillages(true);
     } catch (error) {
       console.error('Error loading villages:', error);
+      setErrorVillages(true);
     } finally {
       setLoadingVillages(false);
     }
@@ -195,6 +210,9 @@ export function AddressDropdowns({
     setRegencies([]);
     setDistricts([]);
     setVillages([]);
+    setErrorRegencies(false);
+    setErrorDistricts(false);
+    setErrorVillages(false);
 
     onChange({
       provinceCode: code,
@@ -210,7 +228,6 @@ export function AddressDropdowns({
     loadRegencies(code);
   };
 
-  // Pre-load regencies when province dropdown is hovered or focused
   const preLoadRegencies = () => {
     if (provinceCode && regencies.length === 0 && !loadingRegencies) {
       loadRegencies(provinceCode);
@@ -223,6 +240,8 @@ export function AddressDropdowns({
 
     setDistricts([]);
     setVillages([]);
+    setErrorDistricts(false);
+    setErrorVillages(false);
 
     onChange({
       provinceCode,
@@ -238,7 +257,6 @@ export function AddressDropdowns({
     loadDistricts(code);
   };
 
-  // Pre-load districts when regency dropdown is hovered or focused
   const preLoadDistricts = () => {
     if (regencyCode && districts.length === 0 && !loadingDistricts) {
       loadDistricts(regencyCode);
@@ -250,6 +268,7 @@ export function AddressDropdowns({
     if (!selected) return;
 
     setVillages([]);
+    setErrorVillages(false);
 
     onChange({
       provinceCode,
@@ -265,7 +284,6 @@ export function AddressDropdowns({
     loadVillages(code);
   };
 
-  // Pre-load villages when district dropdown is hovered or focused
   const preLoadVillages = () => {
     if (districtCode && villages.length === 0 && !loadingVillages) {
       loadVillages(districtCode);
@@ -287,6 +305,23 @@ export function AddressDropdowns({
       villageName: selected.name,
     });
   };
+
+  const RetryButton = ({ onClick, loading }: { onClick: () => void; loading: boolean }) => (
+    <div className="flex items-center gap-2 text-xs text-destructive mt-1">
+      <span>Gagal memuat data.</span>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="h-6 px-2 text-xs"
+        onClick={onClick}
+        disabled={loading}
+      >
+        <RefreshCw className={`h-3 w-3 mr-1 ${loading ? 'animate-spin' : ''}`} />
+        Coba Lagi
+      </Button>
+    </div>
+  );
 
   return (
     <div className="grid grid-cols-2 gap-4">
@@ -324,6 +359,9 @@ export function AddressDropdowns({
             ))}
           </SelectContent>
         </Select>
+        {errorRegencies && !loadingRegencies && (
+          <RetryButton onClick={() => loadRegencies(provinceCode)} loading={loadingRegencies} />
+        )}
       </div>
 
       <div className="space-y-2" onMouseEnter={preLoadDistricts} onFocusCapture={preLoadDistricts}>
@@ -342,6 +380,9 @@ export function AddressDropdowns({
             ))}
           </SelectContent>
         </Select>
+        {errorDistricts && !loadingDistricts && (
+          <RetryButton onClick={() => loadDistricts(regencyCode)} loading={loadingDistricts} />
+        )}
       </div>
 
       <div className="space-y-2" onMouseEnter={preLoadVillages} onFocusCapture={preLoadVillages}>
@@ -360,6 +401,9 @@ export function AddressDropdowns({
             ))}
           </SelectContent>
         </Select>
+        {errorVillages && !loadingVillages && (
+          <RetryButton onClick={() => loadVillages(districtCode)} loading={loadingVillages} />
+        )}
       </div>
     </div>
   );
