@@ -9,9 +9,10 @@ interface MerchantLayoutProps {
   children: ReactNode;
   title: string;
   subtitle?: string;
+  actions?: ReactNode;
 }
 
-export function MerchantLayout({ children, title, subtitle }: MerchantLayoutProps) {
+export function MerchantLayout({ children, title, subtitle, actions }: MerchantLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
@@ -45,6 +46,7 @@ export function MerchantLayout({ children, title, subtitle }: MerchantLayoutProp
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {actions}
             <NotificationDropdown />
           </div>
         </div>
