@@ -33,17 +33,25 @@ interface BuyerOrder {
   order_items: BuyerOrderItem[];
 }
 
+// Database-aligned status config
 const STATUS_CONFIG: Record<string, { label: string; icon: React.ElementType; color: string }> = {
-  pending: { label: "Menunggu Pembayaran", icon: Clock, color: "bg-amber-50 text-amber-700 border-amber-200" },
-  confirmed: { label: "Dikonfirmasi", icon: CheckCircle, color: "bg-sky-50 text-sky-700 border-sky-200" },
-  processing: { label: "Sedang Diproses", icon: Package, color: "bg-blue-50 text-blue-700 border-blue-200" },
-  shipped: { label: "Dalam Pengiriman", icon: Truck, color: "bg-indigo-50 text-indigo-700 border-indigo-200" },
-  out_for_delivery: { label: "Kurir Menuju Lokasi", icon: MapPin, color: "bg-violet-50 text-violet-700 border-violet-200" },
-  ready_for_pickup: { label: "Siap Diambil", icon: Package, color: "bg-teal-50 text-teal-700 border-teal-200" },
-  completed: { label: "Selesai", icon: CheckCircle, color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  cancelled: { label: "Dibatalkan", icon: XCircle, color: "bg-red-50 text-red-700 border-red-200" },
-  returned: { label: "Dikembalikan", icon: RefreshCw, color: "bg-rose-50 text-rose-700 border-rose-200" },
+  NEW: { label: "Pesanan Baru", icon: Clock, color: "bg-amber-50 text-amber-700 border-amber-200" },
+  PENDING_PAYMENT: { label: "Menunggu Pembayaran", icon: Clock, color: "bg-amber-50 text-amber-700 border-amber-200" },
+  PENDING_CONFIRMATION: { label: "Menunggu Konfirmasi", icon: Clock, color: "bg-orange-50 text-orange-700 border-orange-200" },
+  CONFIRMED: { label: "Dikonfirmasi", icon: CheckCircle, color: "bg-sky-50 text-sky-700 border-sky-200" },
+  PROCESSED: { label: "Sedang Diproses", icon: Package, color: "bg-blue-50 text-blue-700 border-blue-200" },
+  SENT: { label: "Dalam Pengiriman", icon: Truck, color: "bg-indigo-50 text-indigo-700 border-indigo-200" },
+  DELIVERED: { label: "Sudah Diantar", icon: MapPin, color: "bg-violet-50 text-violet-700 border-violet-200" },
+  DONE: { label: "Selesai", icon: CheckCircle, color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  CANCELLED: { label: "Dibatalkan", icon: XCircle, color: "bg-red-50 text-red-700 border-red-200" },
+  CANCELED: { label: "Dibatalkan", icon: XCircle, color: "bg-red-50 text-red-700 border-red-200" },
 };
+
+const PENDING_STATUSES = ["NEW", "PENDING_PAYMENT", "PENDING_CONFIRMATION"];
+const PROCESSING_STATUSES = ["CONFIRMED", "PROCESSED"];
+const SHIPPING_STATUSES = ["SENT", "DELIVERED"];
+const DONE_STATUSES = ["DONE"];
+const CANCELLED_STATUSES = ["CANCELLED", "CANCELED"];
 
 const TAB_FILTERS = [
   { value: "all", label: "Semua", icon: ShoppingBag },
@@ -53,6 +61,15 @@ const TAB_FILTERS = [
   { value: "completed", label: "Selesai", icon: CheckCircle },
   { value: "cancelled", label: "Dibatalkan", icon: XCircle },
 ];
+
+const getStatusGroup = (status: string): string => {
+  if (PENDING_STATUSES.includes(status)) return "pending";
+  if (PROCESSING_STATUSES.includes(status)) return "processing";
+  if (SHIPPING_STATUSES.includes(status)) return "shipped";
+  if (DONE_STATUSES.includes(status)) return "completed";
+  if (CANCELLED_STATUSES.includes(status)) return "cancelled";
+  return "all";
+};
 
 const OrdersPage = () => {
   const { user } = useAuth();
@@ -89,27 +106,15 @@ const OrdersPage = () => {
 
   const filteredOrders = orders.filter((order) => {
     if (activeTab === "all") return true;
-    if (activeTab === "pending") return order.status === "pending";
-    if (activeTab === "processing") return ["processing", "confirmed"].includes(order.status);
-    if (activeTab === "shipped") return ["shipped", "ready_for_pickup", "out_for_delivery"].includes(order.status);
-    if (activeTab === "completed") return order.status === "completed";
-    if (activeTab === "cancelled") return ["cancelled", "returned"].includes(order.status);
-    return order.status === activeTab;
+    return getStatusGroup(order.status) === activeTab;
   });
 
   const getTabCount = (tabValue: string) => {
-    return orders.filter((order) => {
-      if (tabValue === "all") return true;
-      if (tabValue === "pending") return order.status === "pending";
-      if (tabValue === "processing") return ["processing", "confirmed"].includes(order.status);
-      if (tabValue === "shipped") return ["shipped", "ready_for_pickup", "out_for_delivery"].includes(order.status);
-      if (tabValue === "completed") return order.status === "completed";
-      if (tabValue === "cancelled") return ["cancelled", "returned"].includes(order.status);
-      return false;
-    }).length;
+    if (tabValue === "all") return orders.length;
+    return orders.filter((order) => getStatusGroup(order.status) === tabValue).length;
   };
 
-  const activeOrderCount = orders.filter(o => !["completed", "cancelled", "returned"].includes(o.status)).length;
+  const activeOrderCount = orders.filter(o => !["DONE", "CANCELLED", "CANCELED"].includes(o.status)).length;
 
   // Not logged in state
   if (!user) {
@@ -137,7 +142,7 @@ const OrdersPage = () => {
 
   return (
     <div className="min-h-screen bg-muted/30 pb-20">
-      {/* Enhanced Header */}
+      {/* Header */}
       <div className="bg-primary px-5 pt-12 pb-6">
         <div className="flex items-center justify-between mb-1">
           <h1 className="text-xl font-bold text-primary-foreground">Pesanan Saya</h1>
@@ -158,7 +163,6 @@ const OrdersPage = () => {
 
       <div className="container max-w-md mx-auto px-4 -mt-3">
         <Tabs defaultValue="all" className="w-full" onValueChange={setActiveTab}>
-          {/* Tab bar */}
           <div className="bg-card rounded-xl shadow-sm p-1.5 mb-4">
             <TabsList className="w-full justify-start overflow-x-auto bg-transparent h-auto p-0 gap-1 no-scrollbar">
               {TAB_FILTERS.map((tab) => {
@@ -211,7 +215,7 @@ const OrdersPage = () => {
                 const firstItem = order.order_items?.[0];
                 const imageUrl = firstItem?.products?.image_url;
                 const productName = firstItem?.products?.name || firstItem?.product_name || "Produk";
-                const statusConf = STATUS_CONFIG[order.status] || STATUS_CONFIG.pending;
+                const statusConf = STATUS_CONFIG[order.status] || STATUS_CONFIG.NEW;
                 const StatusIcon = statusConf.icon;
                 const formattedDate = format(new Date(order.created_at), "dd MMM yyyy", { locale: idLocale });
                 const shortId = order.id.substring(0, 8).toUpperCase();
@@ -277,9 +281,9 @@ const OrdersPage = () => {
                       </div>
 
                       {/* Contextual actions */}
-                      {(order.status === "pending" || order.status === "shipped" || order.status === "out_for_delivery" || order.status === "completed" || order.status === "cancelled") && (
+                      {(PENDING_STATUSES.includes(order.status) || SHIPPING_STATUSES.includes(order.status) || order.status === "DONE" || CANCELLED_STATUSES.includes(order.status)) && (
                         <div className="px-4 py-3 border-t border-border/50 bg-muted/30 flex justify-end gap-2">
-                          {order.status === "pending" && (
+                          {PENDING_STATUSES.includes(order.status) && (
                             <Button
                               size="sm"
                               className="text-xs h-8 rounded-full px-4"
@@ -288,7 +292,7 @@ const OrdersPage = () => {
                               Bayar Sekarang
                             </Button>
                           )}
-                          {["shipped", "out_for_delivery"].includes(order.status) && (
+                          {SHIPPING_STATUSES.includes(order.status) && (
                             <Button
                               size="sm"
                               variant="outline"
@@ -298,7 +302,7 @@ const OrdersPage = () => {
                               <MapPin className="w-3 h-3 mr-1" /> Lacak Pesanan
                             </Button>
                           )}
-                          {order.status === "completed" && (
+                          {order.status === "DONE" && (
                             <>
                               <Button
                                 size="sm"
@@ -318,7 +322,7 @@ const OrdersPage = () => {
                               </Button>
                             </>
                           )}
-                          {order.status === "cancelled" && (
+                          {CANCELLED_STATUSES.includes(order.status) && (
                             <Button
                               size="sm"
                               variant="ghost"
