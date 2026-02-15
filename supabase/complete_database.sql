@@ -1,4 +1,4 @@
--- =====================================================
+-- =nnn====================================================
 -- DESA DIGITAL - COMPLETE DATABASE SCHEMA
 -- Version: 2.0 - Full Features with Dummy Data
 -- Generated: 2026-02-04
