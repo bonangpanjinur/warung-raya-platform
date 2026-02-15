@@ -1,56 +1,77 @@
 
-# Rencana Perbaikan OrdersPage.tsx
 
-## Masalah yang Ditemukan
+# Rencana Perbaikan: tsconfig.json + UI/UX OrdersPage
 
-Ada **5 kategori error** yang harus diperbaiki:
+## Problem 1: Halaman Blank (Build Error)
 
-### 1. `formatCurrency` tidak ada di `utils.ts`
-- File `src/lib/utils.ts` hanya punya `formatPrice`, bukan `formatCurrency`
-- **Solusi**: Ganti `formatCurrency` menjadi `formatPrice`
+File `tsconfig.json` diubah pada edit terakhir dan sekarang menyebabkan error build:
+```
+tsconfig.json: error TS6306: Referenced project 'tsconfig.node.json' must have setting "composite": true.
+tsconfig.json: error TS6310: Referenced project 'tsconfig.node.json' may not disable emit.
+```
 
-### 2. `useRealtimeOrders()` dipanggil tanpa argumen
-- Hook ini membutuhkan parameter `{ merchantId }` (untuk pedagang), tapi halaman ini untuk **pembeli**
-- Hook ini salah dipakai -- seharusnya halaman pembeli fetch pesanan berdasarkan `buyer_id`, bukan `merchant_id`
-- **Solusi**: Buat query baru langsung di OrdersPage yang fetch orders berdasarkan `auth.uid()` sebagai buyer, termasuk join ke `merchants(name)` dan `order_items(*, products(name, image_url))`
+Ini menyebabkan **seluruh aplikasi blank/tidak bisa diakses**.
 
-### 3. `order.merchant` seharusnya `order.merchants`
-- Supabase join menghasilkan key `merchants` (nama tabel), bukan `merchant`
-- **Solusi**: Ganti `order.merchant?.name` menjadi `order.merchants?.name`
+### Solusi
+Kembalikan `tsconfig.json` ke format project references yang benar (seperti sebelumnya):
 
-### 4. `order.items` tidak ada di `OrderRow`
-- Data `order_items` tidak di-fetch oleh hook yang ada
-- **Solusi**: Fetch `order_items` beserta `products` di query baru, dan tambahkan ke tipe data
+```text
+{
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ],
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": { "@/*": ["./src/*"] },
+    "noImplicitAny": false,
+    "noUnusedParameters": false,
+    "skipLibCheck": true,
+    "allowJs": true,
+    "noUnusedLocals": false,
+    "strictNullChecks": false
+  }
+}
+```
 
-### 5. `order.total_amount` seharusnya `order.total`
-- Field di `OrderRow` adalah `total`, bukan `total_amount`
-- **Solusi**: Ganti `order.total_amount` menjadi `order.total`
+Ini mengembalikan referensi ke `tsconfig.app.json` (yang hilang) dan menghilangkan setting `strict`, `noEmit`, dll yang konflik.
 
 ---
 
-## Perubahan yang Akan Dilakukan
+## Problem 2: UI/UX OrdersPage
 
-### File: `src/pages/OrdersPage.tsx` (tulis ulang logika data)
+Setelah build diperbaiki, halaman Orders perlu peningkatan visual:
 
-1. **Hapus import `useRealtimeOrders`** -- hook ini untuk merchant, bukan buyer
-2. **Hapus import `formatCurrency`** -- ganti dengan `formatPrice` dari `@/lib/utils`
-3. **Buat fetch orders inline** menggunakan `useAuth` + `supabase` query:
-   ```
-   SELECT *, merchants(name), order_items(*, products(name, image_url))
-   FROM orders
-   WHERE buyer_id = auth.uid()
-   ORDER BY created_at DESC
-   ```
-4. **Definisikan interface `BuyerOrder`** yang mencakup `merchants`, `order_items`, dan `total`
-5. **Perbaiki semua referensi**:
-   - `order.merchant?.name` -> `order.merchants?.name`
-   - `order.items` -> `order.order_items`
-   - `order.total_amount` -> `order.total`
-   - `formatCurrency` -> `formatPrice`
-6. **Kembalikan import ke `@/` alias** (bukan relative path) agar konsisten dengan seluruh proyek
-7. **Tambahkan skeleton loader** untuk loading state yang lebih baik
-8. **Tambahkan state untuk user belum login** -- tampilkan pesan dan tombol login
+### Perbaikan yang akan dilakukan:
 
-### Tidak ada perubahan di file lain
-- `useRealtimeOrders.ts` tetap utuh (digunakan oleh halaman merchant)
-- `utils.ts` tetap utuh (sudah punya `formatPrice`)
+1. **Header lebih menarik** -- Ganti `PageHeader` sederhana dengan header bergradien hijau brand yang menampilkan ikon dan jumlah pesanan aktif
+
+2. **Tab filter lebih jelas** -- Tambahkan jumlah pesanan per tab (badge count) agar pembeli tahu ada berapa pesanan di setiap kategori
+
+3. **Card pesanan lebih informatif**:
+   - Tampilkan tanggal pesanan (format: "12 Feb 2026")
+   - Tampilkan nomor pesanan singkat (8 karakter pertama dari ID)
+   - Gambar produk lebih besar (20x20 dari 16x16)
+   - Tambahkan divider visual antara info toko dan detail produk
+
+4. **Status dengan ikon** -- Setiap status badge ditambahkan ikon kecil (Clock untuk pending, Truck untuk shipped, dll)
+
+5. **Tombol aksi kontekstual** -- Selain "Bayar Sekarang" untuk pending, tambahkan:
+   - "Lacak Pesanan" untuk status shipped/out_for_delivery
+   - "Beri Ulasan" untuk status completed
+   - "Pesan Lagi" untuk status completed/cancelled
+
+6. **Empty state lebih menarik** -- Ilustrasi lebih besar dengan animasi halus dan teks yang lebih ramah
+
+7. **Pull-to-refresh indicator** -- Tambahkan visual feedback saat refresh data
+
+---
+
+## File yang Diubah
+
+| File | Perubahan |
+|------|-----------|
+| `tsconfig.json` | Kembalikan ke format project references yang benar |
+| `src/pages/OrdersPage.tsx` | Redesign UI/UX lengkap dengan semua perbaikan di atas |
+
