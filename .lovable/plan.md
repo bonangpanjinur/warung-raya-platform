@@ -1,151 +1,183 @@
 
-# Tahap 3: Standarisasi Alamat + Sistem Iuran Verifikator
+# Rencana Pengembangan Tahap 4: Peningkatan Pembeli, Pedagang & Verifikator
 
-## Bagian A: Standarisasi Formulir Alamat
+## Ringkasan
 
-### Masalah Ditemukan
-Ada **3 pola berbeda** untuk dropdown alamat di aplikasi ini:
-
-1. **`AddressSelector`** (di `src/components/AddressSelector.tsx`) -- Menggunakan `addressApi.ts` dengan strategi parallel race 5 arah (cepat). Dipakai di: Checkout, Profil, Alamat Tersimpan.
-2. **`AddressDropdowns`** (di `src/components/admin/AddressDropdowns.tsx`) -- Juga menggunakan `addressApi.ts`. Dipakai di: RegisterMerchantPage.
-3. **`locationService`** (di `src/services/locationService.ts`) -- Menggunakan **hanya Emsifa API langsung** (lebih lambat, tidak ada fallback). Dipakai di: `SellerApplicationForm.tsx`.
-
-Selain itu, `RegisterCourierPage` dan `RegisterVillagePage` menggunakan `addressApi.ts` tapi dengan dropdown manual (bukan komponen reusable), sehingga tidak konsisten dalam UX (tidak ada loading indicator, retry, dll).
-
-### Solusi
-Standarkan semua formulir alamat menggunakan komponen **`AddressSelector`** yang sudah ada, karena:
-- Sudah menggunakan `addressApi.ts` (parallel race, cepat)
-- Ada loading indicator per dropdown
-- Ada retry mechanism
-- Ada preload chain untuk edit mode
-
-### File yang Diubah
-
-| File | Perubahan |
-|------|-----------|
-| `src/components/seller/SellerApplicationForm.tsx` | Ganti `locationService` dengan `AddressSelector` |
-| `src/pages/RegisterCourierPage.tsx` | Ganti dropdown manual dengan `AddressSelector` |
-| `src/pages/RegisterVillagePage.tsx` | Ganti dropdown manual dengan `AddressSelector` |
-
-### Detail Perubahan
-
-**SellerApplicationForm.tsx:**
-- Hapus import `locationService`
-- Import `AddressSelector`, `AddressData`, `createEmptyAddressData`
-- Ganti 4 dropdown terpisah + 4 state loading + 4 handler menjadi satu `<AddressSelector>` component
-- Map `AddressData` ke field form saat submit
-
-**RegisterCourierPage.tsx:**
-- Hapus state `provinces`, `cities`, `districts`, `subdistricts`, `selectedProvinceCode`, dll
-- Import dan gunakan `AddressSelector`
-- Simpan `AddressData` ke state, map ke `formData` saat submit
-
-**RegisterVillagePage.tsx:**
-- Sama: ganti dropdown manual dengan `AddressSelector`
-- Map output ke form values saat submit
+Tahap ini fokus pada peningkatan pengalaman pengguna di ketiga peran utama: pembeli mendapat fitur belanja yang lebih nyaman, pedagang mendapat alat manajemen yang lebih lengkap, dan verifikator mendapat kontrol dan visibilitas yang lebih baik.
 
 ---
 
-## Bagian B: Sistem Iuran Verifikator (Peningkatan)
+## A. Peningkatan Pengalaman Pembeli
 
-### Kondisi Saat Ini
-Sudah ada fitur dasar:
-- Tabel `kas_payments` dengan kolom: group_id, merchant_id, amount, payment_month, payment_year, status, notes, collected_by
-- Verifikator bisa generate tagihan bulanan via `generate_monthly_kas` RPC
-- Verifikator bisa tandai PAID/UNPAID
-- Verifikator bisa kirim pengingat notifikasi
-- Merchant bisa lihat status iuran via `MerchantKasCard`
+### 1. Halaman Riwayat Ulasan Saya
+Saat ini pembeli hanya bisa menulis ulasan, tapi tidak bisa melihat semua ulasan yang pernah ditulis.
 
-### Fitur Baru yang Ditambahkan
+- Buat halaman baru `/reviews/mine` yang menampilkan semua ulasan pembeli
+- Tampilkan: foto produk, rating bintang, teks ulasan, tanggal, dan balasan merchant (jika ada)
+- Tambah menu "Ulasan Saya" di halaman Akun
 
-#### 1. Tagihan Individual (Buat Tagihan ke Merchant Tertentu)
-- Di dashboard verifikator, tambah tombol "Buat Tagihan Manual"
-- Dialog form: pilih merchant (dropdown), jumlah, catatan, bulan/tahun
-- Insert langsung ke `kas_payments`
+### 2. Pesan Ulang (Reorder)
+Pembeli sering memesan produk yang sama berulang kali. Fitur ini mempercepat proses:
 
-#### 2. Kirim Tagihan Massal dengan Notifikasi
-- Saat generate tagihan bulanan, otomatis kirim notifikasi ke semua merchant yang belum bayar
-- Tambah tombol "Kirim Pengingat Semua" untuk batch reminder
+- Di halaman Pesanan, tambah tombol "Pesan Lagi" pada pesanan berstatus DONE
+- Klik tombol langsung memasukkan semua item pesanan ke keranjang (cek stok terlebih dahulu)
+- Tampilkan toast jika ada produk yang sudah tidak tersedia
 
-#### 3. Riwayat Iuran Lengkap di Merchant
-- Perbaiki `MerchantKasCard` menjadi halaman lengkap di merchant dashboard
-- Tambah route `/merchant/dues` untuk halaman iuran
-- Tampilkan: riwayat lengkap, total tunggakan, badge "Terverifikasi" pada pembayaran yang sudah dicatat verifikator
+### 3. Detail Pesanan yang Lebih Lengkap
+Saat ini card pesanan menampilkan info minimal. Perbaikan:
 
-#### 4. Laporan Kas Verifikator
-- Tambah tab "Laporan" di dashboard verifikator
-- Rekap: total terkumpul, total tunggakan, persentase kepatuhan
-- Filter per bulan/tahun
-- Daftar merchant yang nunggak
+- Tambah dialog detail pesanan (OrderDetailsDialog) saat card diklik
+- Tampilkan: daftar item pesanan, alamat pengiriman, metode pembayaran, timeline status, dan info kurir
+- Tampilkan QR code / nomor resi untuk pesanan yang sedang dikirim
 
-#### 5. Status Verifikasi di Merchant
-- Di `MerchantKasCard` dan halaman iuran merchant, tampilkan:
-  - Badge "Terverifikasi oleh Verifikator" jika `collected_by` terisi
-  - Tanggal verifikasi (`payment_date`)
-  - Nama verifikator (query dari `collected_by`)
+### 4. Notifikasi Badge di Bottom Nav
+Tampilkan badge notifikasi unread di ikon Pesanan dan Akun di bottom navigation:
 
-### Database Changes
+- Query `notifications` yang belum dibaca
+- Tampilkan badge merah di tab "Pesanan" jika ada pesanan aktif
+- Tampilkan badge di tab "Akun" jika ada notifikasi unread
+
+---
+
+## B. Peningkatan Dashboard Pedagang
+
+### 1. Ringkasan Keuangan Harian
+Dashboard merchant saat ini menampilkan grafik 14 hari tapi tidak ada ringkasan cepat hari ini:
+
+- Tambah card "Pendapatan Hari Ini" dengan jumlah order dan total omzet hari ini
+- Tambah perbandingan dengan kemarin (naik/turun berapa persen)
+- Tampilkan jumlah pesanan baru yang belum diproses
+
+### 2. Ekspor Laporan Penjualan
+Merchant perlu rekap untuk pembukuan:
+
+- Tambah tombol "Unduh Laporan" di halaman Analitik
+- Generate PDF/CSV dengan data: tanggal, produk terjual, pendapatan, ongkir, refund
+- Filter berdasarkan rentang tanggal (minggu ini, bulan ini, custom)
+
+### 3. Notifikasi Stok Rendah Otomatis
+Saat ini StockAlerts hanya tampil di dashboard, tapi tidak ada notifikasi proaktif:
+
+- Saat stok produk di bawah ambang batas (misal 5), kirim notifikasi in-app ke merchant
+- Tampilkan badge stok rendah di sidebar menu "Produk"
+- Merchant bisa set ambang batas stok per produk di halaman edit produk
+
+### 4. Quick Action Pesanan
+Merchant sering bolak-balik halaman. Perbaikan:
+
+- Di dashboard, tambah card "Pesanan Menunggu" dengan tombol aksi langsung (Terima/Tolak)
+- Swipe-to-action pada daftar pesanan di mobile
+- Sound notification saat pesanan baru masuk (sudah ada, pastikan berfungsi)
+
+---
+
+## C. Peningkatan Dashboard Verifikator
+
+### 1. Dashboard Overview yang Lebih Informatif
+Dashboard verifikator saat ini terlalu padat. Perbaikan:
+
+- Buat layout dashboard 2 kolom: statistik di kiri, aktivitas terbaru di kanan
+- Tambah grafik tren bulanan iuran kas (koleksi per bulan dalam 6 bulan terakhir)
+- Tambah daftar "Merchant Bermasalah" (yang menunggak > 2 bulan)
+
+### 2. Profil Merchant Detail
+Verifikator perlu melihat detail merchant lebih lengkap:
+
+- Dari halaman Daftar Merchant, klik untuk buka detail merchant
+- Tampilkan: info toko, produk, riwayat pesanan, status kuota, riwayat iuran kas
+- Verifikator bisa langsung buat tagihan dari halaman detail ini
+
+### 3. Sistem Pengumuman ke Kelompok
+Verifikator perlu berkomunikasi dengan semua merchant dalam kelompok:
+
+- Tambah fitur "Kirim Pengumuman" di dashboard
+- Pengumuman dikirim sebagai notifikasi ke semua merchant dalam kelompok dagang
+- Riwayat pengumuman tersimpan dan bisa dilihat kembali
+
+### 4. Rekap Kinerja Verifikator
+Untuk transparansi dan evaluasi:
+
+- Tampilkan statistik: jumlah merchant aktif, tingkat kepatuhan iuran, total komisi diterima
+- Grafik tren performa (merchant baru per bulan, iuran terkumpul per bulan)
+- Export rekap ke PDF untuk pelaporan
+
+---
+
+## Detail Teknis
+
+### Database Migration
 
 ```sql
--- Tidak perlu tabel baru, cukup tambah kolom untuk catatan tagihan
-ALTER TABLE kas_payments ADD COLUMN IF NOT EXISTS invoice_note text;
-ALTER TABLE kas_payments ADD COLUMN IF NOT EXISTS sent_at timestamptz;
+-- Tabel pengumuman verifikator ke kelompok
+CREATE TABLE IF NOT EXISTS group_announcements (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  group_id uuid REFERENCES trade_groups(id) ON DELETE CASCADE,
+  verifikator_id uuid REFERENCES auth.users(id),
+  title text NOT NULL,
+  message text NOT NULL,
+  created_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE group_announcements ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Verifikator can manage own announcements"
+  ON group_announcements FOR ALL
+  USING (verifikator_id = auth.uid());
+
+CREATE POLICY "Group members can read announcements"
+  ON group_announcements FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM group_members gm
+      JOIN merchants m ON m.id = gm.merchant_id
+      WHERE gm.group_id = group_announcements.group_id
+      AND m.user_id = auth.uid()
+    )
+  );
+
+-- Ambang batas stok per produk
+ALTER TABLE products ADD COLUMN IF NOT EXISTS low_stock_threshold integer DEFAULT 5;
 ```
 
 ### File Baru
 
 | File | Deskripsi |
 |------|-----------|
-| `src/pages/merchant/MerchantDuesPage.tsx` | Halaman lengkap riwayat iuran merchant |
-| `src/pages/verifikator/VerifikatorKasReportPage.tsx` | Laporan kas lengkap verifikator |
+| `src/pages/buyer/MyReviewsPage.tsx` | Halaman daftar ulasan pembeli |
+| `src/components/order/OrderDetailSheet.tsx` | Bottom sheet detail pesanan lengkap |
+| `src/components/merchant/DailySummaryCard.tsx` | Card ringkasan pendapatan harian |
+| `src/components/merchant/SalesExport.tsx` | Komponen ekspor laporan penjualan |
+| `src/components/verifikator/GroupAnnouncementDialog.tsx` | Dialog kirim pengumuman ke kelompok |
+| `src/components/verifikator/MerchantDetailSheet.tsx` | Detail merchant untuk verifikator |
 
 ### File yang Diubah
 
 | File | Perubahan |
 |------|-----------|
-| `src/pages/verifikator/VerifikatorDashboardPage.tsx` | Tambah dialog tagihan individual, tombol kirim pengingat massal, tab laporan |
-| `src/components/merchant/MerchantKasCard.tsx` | Tambah badge "Terverifikasi", link ke halaman detail, nama verifikator |
-| `src/components/verifikator/VerifikatorSidebar.tsx` | Tambah menu "Laporan Kas" |
-| `src/components/merchant/MerchantSidebar.tsx` | Tambah menu "Iuran Kas" |
-| `src/App.tsx` | Tambah route `/merchant/dues` dan `/verifikator/kas-report` |
+| `src/pages/AccountPage.tsx` | Tambah menu "Ulasan Saya", badge notifikasi |
+| `src/pages/OrdersPage.tsx` | Tambah tombol "Pesan Lagi", klik buka detail sheet |
+| `src/components/layout/BottomNav.tsx` | Tambah badge notifikasi unread & pesanan aktif |
+| `src/pages/merchant/MerchantDashboardPage.tsx` | Tambah DailySummaryCard, quick action pesanan |
+| `src/pages/merchant/MerchantAnalyticsPage.tsx` | Tambah tombol ekspor laporan |
+| `src/pages/merchant/MerchantProductDetailPage.tsx` | Tambah input ambang batas stok rendah |
+| `src/pages/verifikator/VerifikatorDashboardPage.tsx` | Layout baru 2 kolom, grafik tren, daftar merchant bermasalah, tombol pengumuman |
+| `src/pages/verifikator/VerifikatorMerchantsPage.tsx` | Klik merchant buka detail sheet |
+| `src/components/verifikator/VerifikatorSidebar.tsx` | (tidak perlu berubah, sudah lengkap) |
+| `src/components/merchant/MerchantSidebar.tsx` | Badge stok rendah di menu Produk |
+| `src/App.tsx` | Tambah route `/reviews/mine` |
 
-### Alur Buat Tagihan Individual
+### Ringkasan Perubahan
 
-```text
-Verifikator klik "Buat Tagihan Manual"
-  -> Dialog muncul: pilih merchant dari dropdown anggota kelompok
-  -> Isi jumlah (default: iuran bulanan kelompok), catatan, bulan/tahun
-  -> Submit -> insert ke kas_payments dengan status UNPAID
-  -> Otomatis kirim notifikasi ke merchant
-```
+| Kategori | Jumlah |
+|----------|--------|
+| File baru | 6 |
+| File diubah | 11 |
+| Migrasi database | 1 |
+| Total | 18 perubahan |
 
-### Alur Kirim Tagihan Massal
+### Prioritas Implementasi
 
-```text
-Verifikator klik "Generate Tagihan Bulan Ini"
-  -> RPC generate_monthly_kas berjalan
-  -> Setelah berhasil, tampilkan opsi "Kirim Notifikasi ke Semua"
-  -> Klik -> batch insert notifications ke semua merchant yang UNPAID
-  -> Toast: "X pengingat terkirim"
-```
+1. **Tinggi**: Detail pesanan pembeli, badge notifikasi, ringkasan harian merchant
+2. **Sedang**: Pesan ulang, ekspor laporan, pengumuman kelompok
+3. **Rendah**: Grafik tren verifikator, detail merchant verifikator, ambang stok
 
-### Alur Merchant Melihat Iuran Terverifikasi
-
-```text
-Merchant buka halaman Iuran Kas
-  -> Daftar iuran per bulan
-  -> Status PAID + collected_by terisi -> Badge hijau "Terverifikasi"
-  -> Status UNPAID -> Badge merah "Belum Bayar" 
-  -> Total tunggakan ditampilkan di atas
-```
-
----
-
-## Ringkasan Perubahan
-
-| Kategori | Jumlah File |
-|----------|------------|
-| File diubah | 9 |
-| File baru | 2 |
-| Migrasi database | 1 (tambah 2 kolom) |
-| Total | 12 perubahan |
