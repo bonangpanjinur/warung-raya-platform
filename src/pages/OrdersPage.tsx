@@ -4,13 +4,17 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatPrice } from "@/lib/utils";
-import { PageHeader } from "@/components/layout/PageHeader";
 import { BottomNav } from "@/components/layout/BottomNav";
-import { Package, Clock, Truck, CheckCircle, XCircle, ShoppingBag, Store, LogIn } from "lucide-react";
+import {
+  Package, Clock, Truck, CheckCircle, XCircle, ShoppingBag,
+  Store, LogIn, MapPin, Star, RefreshCw, ChevronRight, CalendarDays,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { format } from "date-fns";
+import { id as idLocale } from "date-fns/locale";
 
 interface BuyerOrderItem {
   id: string;
@@ -29,10 +33,32 @@ interface BuyerOrder {
   order_items: BuyerOrderItem[];
 }
 
+const STATUS_CONFIG: Record<string, { label: string; icon: React.ElementType; color: string }> = {
+  pending: { label: "Menunggu Pembayaran", icon: Clock, color: "bg-amber-50 text-amber-700 border-amber-200" },
+  confirmed: { label: "Dikonfirmasi", icon: CheckCircle, color: "bg-sky-50 text-sky-700 border-sky-200" },
+  processing: { label: "Sedang Diproses", icon: Package, color: "bg-blue-50 text-blue-700 border-blue-200" },
+  shipped: { label: "Dalam Pengiriman", icon: Truck, color: "bg-indigo-50 text-indigo-700 border-indigo-200" },
+  out_for_delivery: { label: "Kurir Menuju Lokasi", icon: MapPin, color: "bg-violet-50 text-violet-700 border-violet-200" },
+  ready_for_pickup: { label: "Siap Diambil", icon: Package, color: "bg-teal-50 text-teal-700 border-teal-200" },
+  completed: { label: "Selesai", icon: CheckCircle, color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  cancelled: { label: "Dibatalkan", icon: XCircle, color: "bg-red-50 text-red-700 border-red-200" },
+  returned: { label: "Dikembalikan", icon: RefreshCw, color: "bg-rose-50 text-rose-700 border-rose-200" },
+};
+
+const TAB_FILTERS = [
+  { value: "all", label: "Semua", icon: ShoppingBag },
+  { value: "pending", label: "Belum Bayar", icon: Clock },
+  { value: "processing", label: "Diproses", icon: Package },
+  { value: "shipped", label: "Dikirim", icon: Truck },
+  { value: "completed", label: "Selesai", icon: CheckCircle },
+  { value: "cancelled", label: "Dibatalkan", icon: XCircle },
+];
+
 const OrdersPage = () => {
   const { user } = useAuth();
   const [orders, setOrders] = useState<BuyerOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
   const navigate = useNavigate();
 
@@ -40,51 +66,26 @@ const OrdersPage = () => {
     window.scrollTo(0, 0);
   }, []);
 
-  const fetchOrders = useCallback(async () => {
-    if (!user) {
-      setLoading(false);
-      return;
-    }
+  const fetchOrders = useCallback(async (isRefresh = false) => {
+    if (!user) { setLoading(false); return; }
     try {
-      setLoading(true);
+      if (isRefresh) setRefreshing(true); else setLoading(true);
       const { data, error } = await supabase
         .from("orders")
         .select("id, status, total, created_at, merchants(name), order_items(id, quantity, product_name, product_price, products(name, image_url))")
         .eq("buyer_id", user.id)
         .order("created_at", { ascending: false });
-
       if (error) throw error;
       setOrders((data as unknown as BuyerOrder[]) || []);
     } catch (e) {
       console.error("Error fetching buyer orders:", e);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [user]);
 
-  useEffect(() => {
-    fetchOrders();
-  }, [fetchOrders]);
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "pending": return "bg-yellow-100 text-yellow-800";
-      case "confirmed": case "processing": return "bg-blue-100 text-blue-800";
-      case "shipped": case "ready_for_pickup": case "out_for_delivery": return "bg-indigo-100 text-indigo-800";
-      case "completed": return "bg-green-100 text-green-800";
-      case "cancelled": case "returned": return "bg-red-100 text-red-800";
-      default: return "bg-gray-100 text-gray-800";
-    }
-  };
-
-  const getStatusLabel = (status: string) => {
-    const map: Record<string, string> = {
-      pending: "Menunggu Pembayaran", confirmed: "Dikonfirmasi", processing: "Sedang Diproses",
-      shipped: "Dalam Pengiriman", out_for_delivery: "Kurir Menuju Lokasi", ready_for_pickup: "Siap Diambil",
-      completed: "Selesai", cancelled: "Dibatalkan", returned: "Dikembalikan",
-    };
-    return map[status] || status;
-  };
+  useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
   const filteredOrders = orders.filter((order) => {
     if (activeTab === "all") return true;
@@ -96,15 +97,38 @@ const OrdersPage = () => {
     return order.status === activeTab;
   });
 
+  const getTabCount = (tabValue: string) => {
+    return orders.filter((order) => {
+      if (tabValue === "all") return true;
+      if (tabValue === "pending") return order.status === "pending";
+      if (tabValue === "processing") return ["processing", "confirmed"].includes(order.status);
+      if (tabValue === "shipped") return ["shipped", "ready_for_pickup", "out_for_delivery"].includes(order.status);
+      if (tabValue === "completed") return order.status === "completed";
+      if (tabValue === "cancelled") return ["cancelled", "returned"].includes(order.status);
+      return false;
+    }).length;
+  };
+
+  const activeOrderCount = orders.filter(o => !["completed", "cancelled", "returned"].includes(o.status)).length;
+
+  // Not logged in state
   if (!user) {
     return (
-      <div className="min-h-screen bg-gray-50 pb-20">
-        <PageHeader title="Pesanan Saya" showBack={false} />
-        <div className="container max-w-md mx-auto p-4 pt-20 flex flex-col items-center justify-center min-h-[60vh] text-center">
-          <LogIn className="w-12 h-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-medium mb-1">Belum Login</h3>
-          <p className="text-sm text-muted-foreground mb-6">Silakan login untuk melihat pesanan Anda</p>
-          <Button onClick={() => navigate("/auth")}>Login Sekarang</Button>
+      <div className="min-h-screen bg-background pb-20">
+        <div className="bg-primary px-5 pt-12 pb-8">
+          <h1 className="text-xl font-bold text-primary-foreground">Pesanan Saya</h1>
+        </div>
+        <div className="container max-w-md mx-auto p-6 flex flex-col items-center justify-center min-h-[60vh] text-center">
+          <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-5">
+            <LogIn className="w-10 h-10 text-primary" />
+          </div>
+          <h3 className="text-lg font-semibold text-foreground mb-2">Belum Login</h3>
+          <p className="text-sm text-muted-foreground mb-6 max-w-[240px]">
+            Silakan login untuk melihat dan melacak pesanan Anda
+          </p>
+          <Button onClick={() => navigate("/auth")} className="rounded-full px-8">
+            <LogIn className="w-4 h-4 mr-2" /> Login Sekarang
+          </Button>
         </div>
         <BottomNav />
       </div>
@@ -112,33 +136,73 @@ const OrdersPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      <PageHeader title="Pesanan Saya" showBack={false} />
-      <div className="container max-w-md mx-auto p-4 pt-20">
-        <Tabs defaultValue="all" className="w-full" onValueChange={setActiveTab}>
-          <TabsList className="w-full justify-start overflow-x-auto bg-transparent h-auto p-0 mb-4 gap-2 no-scrollbar">
-            {[
-              { value: "all", label: "Semua" },
-              { value: "pending", label: "Belum Bayar", icon: Clock },
-              { value: "processing", label: "Diproses", icon: Package },
-              { value: "shipped", label: "Dikirim", icon: Truck },
-              { value: "completed", label: "Selesai", icon: CheckCircle },
-              { value: "cancelled", label: "Dibatalkan", icon: XCircle },
-            ].map((tab) => (
-              <TabsTrigger key={tab.value} value={tab.value} className="rounded-full border bg-white data-[state=active]:bg-primary data-[state=active]:text-white px-4 py-2 h-auto flex-shrink-0">
-                {tab.icon && <tab.icon className="w-3 h-3 mr-1.5" />}
-                {tab.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+    <div className="min-h-screen bg-muted/30 pb-20">
+      {/* Enhanced Header */}
+      <div className="bg-primary px-5 pt-12 pb-6">
+        <div className="flex items-center justify-between mb-1">
+          <h1 className="text-xl font-bold text-primary-foreground">Pesanan Saya</h1>
+          <button
+            onClick={() => fetchOrders(true)}
+            disabled={refreshing}
+            className="p-2 rounded-full hover:bg-white/10 transition-colors"
+          >
+            <RefreshCw className={`w-5 h-5 text-primary-foreground ${refreshing ? "animate-spin" : ""}`} />
+          </button>
+        </div>
+        {activeOrderCount > 0 && (
+          <p className="text-primary-foreground/80 text-sm">
+            {activeOrderCount} pesanan aktif
+          </p>
+        )}
+      </div>
 
-          <div className="space-y-4 min-h-[50vh]">
+      <div className="container max-w-md mx-auto px-4 -mt-3">
+        <Tabs defaultValue="all" className="w-full" onValueChange={setActiveTab}>
+          {/* Tab bar */}
+          <div className="bg-card rounded-xl shadow-sm p-1.5 mb-4">
+            <TabsList className="w-full justify-start overflow-x-auto bg-transparent h-auto p-0 gap-1 no-scrollbar">
+              {TAB_FILTERS.map((tab) => {
+                const count = getTabCount(tab.value);
+                return (
+                  <TabsTrigger
+                    key={tab.value}
+                    value={tab.value}
+                    className="rounded-lg border-0 bg-transparent data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-3 py-2 h-auto flex-shrink-0 text-xs font-medium gap-1.5 transition-all"
+                  >
+                    <tab.icon className="w-3.5 h-3.5" />
+                    {tab.label}
+                    {count > 0 && (
+                      <span className="ml-0.5 min-w-[18px] h-[18px] rounded-full bg-current/10 text-[10px] font-bold flex items-center justify-center">
+                        {count}
+                      </span>
+                    )}
+                  </TabsTrigger>
+                );
+              })}
+            </TabsList>
+          </div>
+
+          {/* Orders list */}
+          <div className="space-y-3 min-h-[50vh]">
             {loading ? (
               Array.from({ length: 3 }).map((_, i) => (
-                <Card key={i} className="overflow-hidden border-none shadow-sm">
+                <Card key={i} className="overflow-hidden border-0 shadow-sm">
                   <CardContent className="p-0">
-                    <div className="p-3 border-b flex justify-between items-center"><Skeleton className="h-4 w-32" /><Skeleton className="h-5 w-24 rounded-full" /></div>
-                    <div className="p-3 flex gap-3"><Skeleton className="w-16 h-16 rounded-md" /><div className="flex-1 space-y-2"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-3 w-1/2" /><Skeleton className="h-4 w-1/3" /></div></div>
+                    <div className="p-4 border-b flex justify-between items-center">
+                      <div className="space-y-1.5">
+                        <Skeleton className="h-3 w-20" />
+                        <Skeleton className="h-4 w-32" />
+                      </div>
+                      <Skeleton className="h-6 w-24 rounded-full" />
+                    </div>
+                    <div className="p-4 flex gap-4">
+                      <Skeleton className="w-20 h-20 rounded-lg" />
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-4 w-3/4" />
+                        <Skeleton className="h-3 w-1/2" />
+                        <Skeleton className="h-5 w-1/3 mt-2" />
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
               ))
@@ -147,34 +211,123 @@ const OrdersPage = () => {
                 const firstItem = order.order_items?.[0];
                 const imageUrl = firstItem?.products?.image_url;
                 const productName = firstItem?.products?.name || firstItem?.product_name || "Produk";
+                const statusConf = STATUS_CONFIG[order.status] || STATUS_CONFIG.pending;
+                const StatusIcon = statusConf.icon;
+                const formattedDate = format(new Date(order.created_at), "dd MMM yyyy", { locale: idLocale });
+                const shortId = order.id.substring(0, 8).toUpperCase();
+
                 return (
-                  <Card key={order.id} className="overflow-hidden border-none shadow-sm cursor-pointer active:scale-[0.99] transition-transform" onClick={() => navigate(`/order-tracking/${order.id}`)}>
+                  <Card
+                    key={order.id}
+                    className="overflow-hidden border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer active:scale-[0.99]"
+                    onClick={() => navigate(`/order-tracking/${order.id}`)}
+                  >
                     <CardContent className="p-0">
-                      <div className="p-3 border-b flex justify-between items-center bg-white">
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Store className="w-4 h-4" />
-                          <span className="font-medium truncate max-w-[150px]">{order.merchants?.name || "Toko"}</span>
-                        </div>
-                        <Badge variant="outline" className={`${getStatusColor(order.status)} border-0 px-2 py-0.5 text-xs`}>{getStatusLabel(order.status)}</Badge>
-                      </div>
-                      <div className="p-3 flex gap-3 bg-white">
-                        <div className="w-16 h-16 bg-gray-100 rounded-md flex-shrink-0 overflow-hidden">
-                          {imageUrl ? <img src={imageUrl} alt={productName} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-gray-400"><ShoppingBag className="w-8 h-8" /></div>}
-                        </div>
+                      {/* Card header */}
+                      <div className="px-4 py-3 border-b border-border/50 flex justify-between items-center">
                         <div className="flex-1 min-w-0">
-                          <h4 className="font-medium text-sm truncate">{productName}</h4>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {order.order_items.length > 1 ? `+ ${order.order_items.length - 1} produk lainnya` : `${firstItem?.quantity || 1} barang`}
-                          </p>
-                          <div className="mt-2">
-                            <p className="text-xs text-muted-foreground">Total Belanja</p>
-                            <p className="text-sm font-bold text-primary">{formatPrice(order.total)}</p>
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-0.5">
+                            <CalendarDays className="w-3 h-3" />
+                            <span>{formattedDate}</span>
+                            <span className="text-border">•</span>
+                            <span className="font-mono">#{shortId}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-sm">
+                            <Store className="w-3.5 h-3.5 text-muted-foreground" />
+                            <span className="font-medium truncate max-w-[160px]">{order.merchants?.name || "Toko"}</span>
+                          </div>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={`${statusConf.color} border px-2.5 py-1 text-[11px] font-medium gap-1 flex-shrink-0`}
+                        >
+                          <StatusIcon className="w-3 h-3" />
+                          {statusConf.label}
+                        </Badge>
+                      </div>
+
+                      {/* Product info */}
+                      <div className="p-4 flex gap-4">
+                        <div className="w-20 h-20 bg-muted rounded-lg flex-shrink-0 overflow-hidden">
+                          {imageUrl ? (
+                            <img src={imageUrl} alt={productName} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                              <ShoppingBag className="w-8 h-8" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0 flex flex-col justify-between">
+                          <div>
+                            <h4 className="font-medium text-sm truncate text-foreground">{productName}</h4>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {order.order_items.length > 1
+                                ? `+${order.order_items.length - 1} produk lainnya`
+                                : `${firstItem?.quantity || 1} barang`}
+                            </p>
+                          </div>
+                          <div className="flex items-end justify-between mt-2">
+                            <div>
+                              <p className="text-[11px] text-muted-foreground">Total Belanja</p>
+                              <p className="text-sm font-bold text-primary">{formatPrice(order.total)}</p>
+                            </div>
+                            <ChevronRight className="w-4 h-4 text-muted-foreground" />
                           </div>
                         </div>
                       </div>
-                      {order.status === "pending" && (
-                        <div className="p-3 border-t bg-gray-50 flex justify-end">
-                          <Button size="sm" className="text-xs h-8" onClick={(e) => { e.stopPropagation(); navigate(`/payment/${order.id}`); }}>Bayar Sekarang</Button>
+
+                      {/* Contextual actions */}
+                      {(order.status === "pending" || order.status === "shipped" || order.status === "out_for_delivery" || order.status === "completed" || order.status === "cancelled") && (
+                        <div className="px-4 py-3 border-t border-border/50 bg-muted/30 flex justify-end gap-2">
+                          {order.status === "pending" && (
+                            <Button
+                              size="sm"
+                              className="text-xs h-8 rounded-full px-4"
+                              onClick={(e) => { e.stopPropagation(); navigate(`/payment/${order.id}`); }}
+                            >
+                              Bayar Sekarang
+                            </Button>
+                          )}
+                          {["shipped", "out_for_delivery"].includes(order.status) && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-xs h-8 rounded-full px-4"
+                              onClick={(e) => { e.stopPropagation(); navigate(`/order-tracking/${order.id}`); }}
+                            >
+                              <MapPin className="w-3 h-3 mr-1" /> Lacak Pesanan
+                            </Button>
+                          )}
+                          {order.status === "completed" && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-xs h-8 rounded-full px-4"
+                                onClick={(e) => { e.stopPropagation(); navigate(`/order-tracking/${order.id}`); }}
+                              >
+                                <Star className="w-3 h-3 mr-1" /> Beri Ulasan
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-xs h-8 rounded-full px-4"
+                                onClick={(e) => { e.stopPropagation(); navigate("/explore"); }}
+                              >
+                                <RefreshCw className="w-3 h-3 mr-1" /> Pesan Lagi
+                              </Button>
+                            </>
+                          )}
+                          {order.status === "cancelled" && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-xs h-8 rounded-full px-4"
+                              onClick={(e) => { e.stopPropagation(); navigate("/explore"); }}
+                            >
+                              <RefreshCw className="w-3 h-3 mr-1" /> Pesan Lagi
+                            </Button>
+                          )}
                         </div>
                       )}
                     </CardContent>
@@ -182,13 +335,19 @@ const OrdersPage = () => {
                 );
               })
             ) : (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <div className="bg-gray-100 p-4 rounded-full mb-4"><ShoppingBag className="w-10 h-10 text-gray-400" /></div>
-                <h3 className="text-lg font-medium mb-1">Belum ada pesanan</h3>
-                <p className="text-muted-foreground text-sm max-w-[200px]">
-                  {activeTab === "all" ? "Kamu belum pernah membuat pesanan apapun" : `Tidak ada pesanan "${getStatusLabel(activeTab)}"`}
+              <div className="flex flex-col items-center justify-center py-20 text-center">
+                <div className="w-24 h-24 rounded-full bg-muted flex items-center justify-center mb-5">
+                  <ShoppingBag className="w-12 h-12 text-muted-foreground/50" />
+                </div>
+                <h3 className="text-lg font-semibold text-foreground mb-1">Belum ada pesanan</h3>
+                <p className="text-muted-foreground text-sm max-w-[220px] mb-6">
+                  {activeTab === "all"
+                    ? "Yuk mulai belanja dan temukan produk terbaik!"
+                    : `Tidak ada pesanan dengan status "${TAB_FILTERS.find(t => t.value === activeTab)?.label || activeTab}"`}
                 </p>
-                <Button className="mt-6" variant="outline" onClick={() => navigate("/explore")}>Mulai Belanja</Button>
+                <Button className="rounded-full px-6" onClick={() => navigate("/explore")}>
+                  <ShoppingBag className="w-4 h-4 mr-2" /> Mulai Belanja
+                </Button>
               </div>
             )}
           </div>
