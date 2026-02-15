@@ -1,20 +1,32 @@
-import { 
-  fetchProvinces, 
-  fetchRegencies, 
-  fetchDistricts, 
-  fetchVillages, 
-  Region 
-} from '@/lib/addressApi';
+/**
+ * Service untuk menangani data wilayah Indonesia menggunakan API emsifa (CDN GitHub).
+ * Pendekatan ini menggantikan penggunaan data statis yang besar untuk meningkatkan performa.
+ */
 
-export type { Region };
+export interface Region {
+  id: string;
+  name: string;
+}
+
+const BASE_URL = 'https://www.emsifa.com/api-wilayah-indonesia/api';
+
+// Simple in-memory cache to avoid redundant requests during a single session
+const cache: Record<string, Region[]> = {};
 
 export const locationService = {
   /**
    * Mengambil daftar provinsi
    */
   getProvinces: async (): Promise<Region[]> => {
+    const cacheKey = 'provinces';
+    if (cache[cacheKey]) return cache[cacheKey];
+
     try {
-      return await fetchProvinces();
+      const response = await fetch(`${BASE_URL}/provinces.json`);
+      if (!response.ok) throw new Error('Failed to fetch provinces');
+      const data = await response.json();
+      cache[cacheKey] = data;
+      return data;
     } catch (error) {
       console.error('Error in locationService.getProvinces:', error);
       return [];
@@ -22,37 +34,61 @@ export const locationService = {
   },
 
   /**
-   * Mengambil daftar kabupaten/kota berdasarkan kode provinsi
+   * Mengambil daftar kabupaten/kota berdasarkan ID provinsi
    */
-  getRegencies: async (provinceCode: string): Promise<Region[]> => {
+  getRegencies: async (provinceId: string): Promise<Region[]> => {
+    if (!provinceId) return [];
+    const cacheKey = `regencies-${provinceId}`;
+    if (cache[cacheKey]) return cache[cacheKey];
+
     try {
-      return await fetchRegencies(provinceCode);
+      const response = await fetch(`${BASE_URL}/regencies/${provinceId}.json`);
+      if (!response.ok) throw new Error('Failed to fetch regencies');
+      const data = await response.json();
+      cache[cacheKey] = data;
+      return data;
     } catch (error) {
-      console.error('Error in locationService.getRegencies:', error);
+      console.error(`Error in locationService.getRegencies for province ${provinceId}:`, error);
       return [];
     }
   },
 
   /**
-   * Mengambil daftar kecamatan berdasarkan kode kabupaten/kota
+   * Mengambil daftar kecamatan berdasarkan ID kabupaten/kota
    */
-  getDistricts: async (regencyCode: string): Promise<Region[]> => {
+  getDistricts: async (regencyId: string): Promise<Region[]> => {
+    if (!regencyId) return [];
+    const cacheKey = `districts-${regencyId}`;
+    if (cache[cacheKey]) return cache[cacheKey];
+
     try {
-      return await fetchDistricts(regencyCode);
+      const response = await fetch(`${BASE_URL}/districts/${regencyId}.json`);
+      if (!response.ok) throw new Error('Failed to fetch districts');
+      const data = await response.json();
+      cache[cacheKey] = data;
+      return data;
     } catch (error) {
-      console.error('Error in locationService.getDistricts:', error);
+      console.error(`Error in locationService.getDistricts for regency ${regencyId}:`, error);
       return [];
     }
   },
 
   /**
-   * Mengambil daftar kelurahan berdasarkan kode kecamatan
+   * Mengambil daftar kelurahan berdasarkan ID kecamatan
    */
-  getVillages: async (districtCode: string): Promise<Region[]> => {
+  getVillages: async (districtId: string): Promise<Region[]> => {
+    if (!districtId) return [];
+    const cacheKey = `villages-${districtId}`;
+    if (cache[cacheKey]) return cache[cacheKey];
+
     try {
-      return await fetchVillages(districtCode);
+      const response = await fetch(`${BASE_URL}/villages/${districtId}.json`);
+      if (!response.ok) throw new Error('Failed to fetch villages');
+      const data = await response.json();
+      cache[cacheKey] = data;
+      return data;
     } catch (error) {
-      console.error('Error in locationService.getVillages:', error);
+      console.error(`Error in locationService.getVillages for district ${districtId}:`, error);
       return [];
     }
   },
@@ -61,7 +97,7 @@ export const locationService = {
    * Mendapatkan nama wilayah berdasarkan ID dari daftar wilayah yang ada
    */
   getNameById: (regions: Region[], id: string): string => {
-    const region = regions.find(r => r.code === id);
+    const region = regions.find(r => r.id === id);
     return region ? region.name : '';
   }
 };

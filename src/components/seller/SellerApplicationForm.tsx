@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Loader2, Store, MapPin, CheckCircle2 } from "lucide-react";
+import { Loader2, Store } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -216,7 +216,7 @@ export default function SellerApplicationForm() {
   return (
     <div className="max-w-2xl mx-auto p-4 md:p-8 bg-white dark:bg-gray-950 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-800">
       <div className="mb-10 text-center">
-        <div className="mx-auto w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-4 text-primary rotate-3 hover:rotate-0 transition-transform">
+        <div className="mx-auto w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-4 text-primary">
           <Store className="w-8 h-8" />
         </div>
         <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">Daftar Merchant Baru</h2>
@@ -316,7 +316,7 @@ export default function SellerApplicationForm() {
                       </FormControl>
                       <SelectContent>
                         {provinces.map((prov) => (
-                          <SelectItem key={prov.code} value={prov.code}>
+                          <SelectItem key={prov.id} value={prov.id}>
                             {prov.name}
                           </SelectItem>
                         ))}
@@ -352,7 +352,7 @@ export default function SellerApplicationForm() {
                       </FormControl>
                       <SelectContent>
                         {cities.map((city) => (
-                          <SelectItem key={city.code} value={city.code}>
+                          <SelectItem key={city.id} value={city.id}>
                             {city.name}
                           </SelectItem>
                         ))}
@@ -388,7 +388,7 @@ export default function SellerApplicationForm() {
                       </FormControl>
                       <SelectContent>
                         {districts.map((dist) => (
-                          <SelectItem key={dist.code} value={dist.code}>
+                          <SelectItem key={dist.id} value={dist.id}>
                             {dist.name}
                           </SelectItem>
                         ))}
@@ -424,7 +424,7 @@ export default function SellerApplicationForm() {
                       </FormControl>
                       <SelectContent>
                         {villages.map((v) => (
-                          <SelectItem key={v.code} value={v.code}>
+                          <SelectItem key={v.id} value={v.id}>
                             {v.name}
                           </SelectItem>
                         ))}
