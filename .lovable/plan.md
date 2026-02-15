@@ -1,115 +1,58 @@
 
-# Rencana Perbaikan Menyeluruh: Pendaftaran UMKM, Lokasi, dan Manajemen User
+# Perbaikan: Percepatan Loading Dropdown Alamat + Auto-save Draft Form
 
-## Ringkasan 5 Masalah
+## Masalah Utama
 
-| No | Masalah | Akar Penyebab |
-|----|---------|---------------|
-| 1 | Kode referral muncul 2x di form pendaftaran UMKM | Ada 2 input terpisah untuk hal yang sama (baris 396-433 dan baris 448-461) |
-| 2 | Dropdown lokasi sering gagal/lambat di jaringan lemah | Timeout terlalu pendek (5 detik), tidak ada retry, dan tidak ada loading indicator yang jelas |
-| 3 | Titik lokasi toko harus otomatis terisi | Saat ini hanya manual klik peta, tidak ada auto-detect GPS saat halaman dibuka |
-| 4 | User baru tidak tercatat di manajemen user | **Trigger `handle_new_user` tidak terpasang ke `auth.users`** -- fungsi ada tapi trigger-nya hilang, jadi profile dan role tidak dibuat otomatis |
-| 5 | Toko yang didaftarkan dari akun user harus otomatis terhubung | Insert ke `merchants` tidak menyertakan `user_id = auth.uid()` |
+Dropdown alamat (Kecamatan, Kelurahan) sering tidak muncul atau sangat lama karena:
+1. **Fetch sequential** -- direct gagal (10s) -> retry (10s) -> edge function (15s) -> retry (15s) -> CORS proxy (15s) -> retry (15s) = **total 80 detik** worst case sebelum menyerah
+2. **Tidak ada feedback error yang actionable** -- user hanya melihat "Pilih kecamatan" tanpa tahu apakah sedang loading atau gagal
+3. **Data hilang saat keluar halaman** -- tidak ada mekanisme simpan draft
 
 ---
 
-## Fase 1: Fix Trigger User Baru (Masalah #4) -- PRIORITAS TERTINGGI
+## Solusi 1: Parallel Race untuk Fetch Alamat
 
-**Ini adalah bug paling kritis.** Fungsi `handle_new_user()` sudah ada di database tapi tidak ada trigger yang menghubungkannya ke tabel `auth.users`. Akibatnya:
-- Profil tidak dibuat otomatis saat signup
-- Role `buyer` tidak ditambahkan
-- User tidak muncul di halaman admin
+Ubah `fetchWithFallbacks` di `src/lib/addressApi.ts` dari sequential menjadi **parallel race** menggunakan `Promise.any()`:
 
-**SQL Migration:**
 ```text
--- Pasang trigger yang hilang
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW
-  EXECUTE FUNCTION public.handle_new_user();
+SEBELUM (sequential, worst case 80s):
+  direct(10s) -> retry(10s) -> edge(15s) -> retry(15s) -> cors(15s) -> retry(15s)
+
+SESUDAH (parallel, worst case 15s):
+  Promise.any([direct(10s), edge(15s), cors(15s)])
+  -> Yang pertama berhasil langsung dipakai
+  -> Sisanya di-cancel via AbortController
 ```
 
-**File:** SQL Migration baru
+**File:** `src/lib/addressApi.ts`
+- Buat fungsi `fetchParallelRace(type, code)` yang menjalankan ketiga strategi bersamaan
+- Gunakan shared `AbortController` agar request yang kalap bisa dibatalkan
+- Tetap ada fallback ke `STATIC_PROVINCES` jika semua gagal untuk provinsi
 
 ---
 
-## Fase 2: Hapus Redundansi Kode Referral (Masalah #1)
+## Solusi 2: Tombol Retry + Error State di Form
 
-Di `RegisterMerchantPage.tsx` ada 2 tempat input kode referral/verifikator:
-
-1. **Section "Kode Referral"** (baris 396-433) -- input lengkap dengan validasi, status badge
-2. **Section "Informasi Usaha"** (baris 448-461) -- input kedua berlabel "Kode Verifikator" yang mengarah ke state yang sama
-
-Keduanya menggunakan `referralCode` state yang sama, jadi sebenarnya redundan.
-
-**Solusi:** Hapus input kedua (baris 448-461) karena section pertama sudah lengkap dengan validasi dan feedback visual.
-
-**File:** `src/pages/RegisterMerchantPage.tsx`
+Di `src/pages/RegisterMerchantPage.tsx`, tambahkan:
+- State `errorLoadingDistricts` dan `errorLoadingSubdistricts`
+- Jika fetch gagal (return array kosong), tampilkan pesan error + tombol "Coba Lagi"
+- Tombol retry memanggil ulang fetch tanpa perlu mengganti pilihan parent
 
 ---
 
-## Fase 3: Perbaikan Dropdown Lokasi untuk Jaringan Lemah (Masalah #2)
+## Solusi 3: Auto-save Draft Form ke localStorage
 
-Masalah saat ini di `addressApi.ts`:
-- Timeout direct fetch hanya 5 detik, edge function 8 detik
-- Jika semua gagal, user tidak tahu harus apa (hanya error di console)
-- Tidak ada retry otomatis
+Di `src/pages/RegisterMerchantPage.tsx`:
+- Simpan semua state form ke `localStorage` (key: `merchant_registration_draft`) dengan debounce 500ms
+- Saat mount, baca draft dan restore semua field + trigger load chain dropdown
+- Hapus draft setelah submit berhasil
+- Tampilkan banner kecil "Draft tersimpan" + tombol "Hapus Draft"
 
-**Perbaikan di `src/lib/addressApi.ts`:**
-1. Naikkan timeout: direct 10 detik, edge function 15 detik, CORS proxy 15 detik
-2. Tambah retry otomatis (1x retry per strategi sebelum pindah ke fallback berikutnya)
-3. Jika semua gagal, return array kosong dengan pesan yang jelas, bukan throw error
-
-**Perbaikan di `src/pages/RegisterMerchantPage.tsx`:**
-1. Tambah tombol "Coba Lagi" jika dropdown gagal dimuat
-2. Tampilkan skeleton/spinner yang lebih jelas saat loading
-3. Tambah pesan "Koneksi lambat, mohon tunggu..." jika loading lebih dari 3 detik
-
-**File:** `src/lib/addressApi.ts`, `src/pages/RegisterMerchantPage.tsx`
-
----
-
-## Fase 4: Auto-detect Lokasi GPS untuk Titik Toko (Masalah #3)
-
-Di `MerchantLocationPicker.tsx`, GPS hanya aktif saat user menekan tombol "Lokasi Saya".
-
-**Perbaikan:**
-1. Saat komponen pertama kali dimuat dan belum ada `value`, otomatis panggil `navigator.geolocation.getCurrentPosition`
-2. Set lokasi dari GPS sebagai nilai awal
-3. User masih bisa klik peta untuk menggeser titik secara manual
-4. Tambah fallback: jika GPS ditolak/gagal, tetap tampilkan peta di posisi default (Tasikmalaya)
-
-**File:** `src/components/merchant/MerchantLocationPicker.tsx`
-
----
-
-## Fase 5: Otomatis Hubungkan Merchant ke Akun User (Masalah #5)
-
-Saat ini di `RegisterMerchantPage.tsx` baris 318, ada komentar:
-```
-// user_id is automatically handled by Supabase Trigger
-```
-Tapi **tidak ada trigger yang melakukan ini**. `user_id` tidak pernah dikirim saat insert.
-
-**Perbaikan:** Tambahkan `user_id: user.id` ke objek insert di `RegisterMerchantPage.tsx`:
-```text
-const { error } = await supabase.from('merchants').insert({
-  user_id: user.id,  // <-- tambahkan ini
-  name: data.name.trim(),
-  ...
-});
-```
-
-**File:** `src/pages/RegisterMerchantPage.tsx`
-
----
-
-## Urutan Implementasi
-
-1. SQL Migration -- pasang trigger `on_auth_user_created` (Fase 1)
-2. `src/pages/RegisterMerchantPage.tsx` -- hapus redundansi referral + tambah `user_id` + perbaiki UX loading (Fase 2, 3, 5)
-3. `src/lib/addressApi.ts` -- perbaiki timeout dan retry (Fase 3)
-4. `src/components/merchant/MerchantLocationPicker.tsx` -- auto GPS (Fase 4)
+**Data yang disimpan:**
+- Nama, kategori, deskripsi, phone, jam buka/tutup
+- Kode & nama provinsi, kota, kecamatan, kelurahan
+- Koordinat lokasi, kode referral
+- Status halal & URL sertifikat
 
 ---
 
@@ -119,15 +62,39 @@ const { error } = await supabase.from('merchants').insert({
 
 | File | Perubahan |
 |------|-----------|
-| SQL Migration (baru) | Pasang trigger `on_auth_user_created` ke `auth.users` |
-| `src/pages/RegisterMerchantPage.tsx` | Hapus input referral duplikat (baris 448-461), tambah `user_id: user.id` di insert, tambah retry button untuk dropdown lokasi |
-| `src/lib/addressApi.ts` | Naikkan timeout (10s/15s), tambah retry per strategi, error handling lebih baik |
-| `src/components/merchant/MerchantLocationPicker.tsx` | Auto-detect GPS saat mount jika belum ada value |
+| `src/lib/addressApi.ts` | Ganti `fetchWithFallbacks` ke parallel race dengan `Promise.any()` + shared AbortController |
+| `src/pages/RegisterMerchantPage.tsx` | Tambah auto-save draft, restore draft, error state + retry button untuk dropdown, banner draft |
 
-### Dampak
+### Implementasi Parallel Race (addressApi.ts)
 
-- User baru langsung muncul di manajemen pengguna admin
-- Form pendaftaran UMKM lebih bersih tanpa duplikasi
-- Dropdown alamat lebih tahan di jaringan lemah
-- Titik toko otomatis terisi dari GPS
-- Merchant otomatis terhubung ke akun pendaftar
+Fungsi baru `fetchParallelRace`:
+1. Buat 1 `AbortController` bersama
+2. Jalankan `fetchDirect`, `fetchViaEdgeFunction`, `fetchViaCorsProxy` secara bersamaan via `Promise.any()`
+3. Saat salah satu berhasil, abort sisanya
+4. Jika semua gagal (`AggregateError`), return data statis atau array kosong
+
+### Implementasi Draft (RegisterMerchantPage.tsx)
+
+```text
+DRAFT_KEY = 'merchant_registration_draft'
+
+On mount:
+  1. Baca draft dari localStorage
+  2. Set semua state (selectedProvince, selectedCity, dll)
+  3. Set form values via setValue()
+  4. Trigger chain loading dropdown (provinsi -> kota -> kecamatan -> kelurahan)
+
+On change (debounce 500ms):
+  1. Kumpulkan semua state ke object
+  2. Simpan ke localStorage
+
+On submit success:
+  1. localStorage.removeItem(DRAFT_KEY)
+```
+
+### Implementasi Retry Button
+
+Untuk setiap dropdown yang gagal load:
+- Deteksi jika fetch return array kosong (bukan karena belum dipilih parent)
+- Tampilkan: "Gagal memuat data. [Coba Lagi]"
+- Tombol retry memanggil fungsi fetch ulang dengan kode parent yang sama
