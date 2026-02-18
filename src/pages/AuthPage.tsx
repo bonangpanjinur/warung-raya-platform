@@ -100,7 +100,7 @@ export default function AuthPage() {
           return;
         }
 
-        const { error } = await signUp(formData.email, formData.password, formData.fullName);
+        const { data, error } = await signUp(formData.email, formData.password, formData.fullName);
         if (error) {
           toast({
             title: 'Gagal daftar',
@@ -108,9 +108,14 @@ export default function AuthPage() {
             variant: 'destructive',
           });
         } else {
-          toast({ title: 'Akun berhasil di daftarkan, silahkan cek email untuk verifikasi' });
-          setIsLogin(true);
-          setFormData({ fullName: '', email: '', password: '', confirmPassword: '' });
+          if (data?.session) {
+            toast({ title: 'Akun berhasil didaftarkan dan otomatis terverifikasi!' });
+            // Redirect will happen automatically via useEffect in AuthContext
+          } else {
+            toast({ title: 'Akun berhasil didaftarkan, silakan cek email untuk verifikasi' });
+            setIsLogin(true);
+            setFormData({ fullName: '', email: '', password: '', confirmPassword: '' });
+          }
         }
       }
     } finally {
@@ -201,7 +206,7 @@ export default function AuthPage() {
                 className="pl-10"
               />
             </div>
-            <p className="text-[10px] text-muted-foreground italic">masukan email yang aktif untuk verifikasi</p>
+            <p className="text-[10px] text-muted-foreground italic">masukan email yang aktif</p>
             {errors.email && (
               <p className="text-xs text-destructive">{errors.email}</p>
             )}

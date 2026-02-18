@@ -9,7 +9,7 @@ interface AuthContextType {
   roles: AppRole[];
   loading: boolean;
   rolesLoading: boolean;
-  signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, fullName: string) => Promise<{ data: any; error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   hasRole: (role: AppRole) => boolean;
@@ -94,7 +94,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [fetchUserRoles]);
 
   const signUp = async (email: string, password: string, fullName: string) => {
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -104,7 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
       },
     });
-    return { error };
+    return { data, error };
   };
 
   const signIn = async (email: string, password: string) => {
