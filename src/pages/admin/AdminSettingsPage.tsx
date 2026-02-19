@@ -87,6 +87,7 @@ export default function AdminSettingsPage() {
   const registrationVillage = getSetting('registration_village')?.value as unknown as RegistrationSettings | undefined;
   const registrationMerchant = getSetting('registration_merchant')?.value as unknown as RegistrationSettings | undefined;
   const registrationCourier = getSetting('registration_courier')?.value as unknown as RegistrationSettings | undefined;
+  const merchantAutoApprove = getSetting('merchant_auto_approve')?.value as unknown as RegistrationSettings | undefined;
   const addressApi = getSetting('address_api')?.value as unknown as AddressApiSettings | undefined;
   const paymentMidtrans = getSetting('payment_midtrans')?.value as unknown as PaymentSettings | undefined;
   const paymentXendit = getSetting('payment_xendit')?.value as unknown as PaymentSettings | undefined;
@@ -178,6 +179,18 @@ export default function AdminSettingsPage() {
                         checked={registrationCourier?.enabled ?? true}
                         onCheckedChange={() => handleToggleRegistration('registration_courier', registrationCourier?.enabled ?? true)}
                         disabled={saving === 'registration_courier'}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between p-4 bg-secondary/50 rounded-lg">
+                      <div>
+                        <p className="font-medium text-sm">Auto-Approve Pedagang/UMKM</p>
+                        <p className="text-xs text-muted-foreground">Setujui pendaftaran merchant secara otomatis tanpa perlu verifikasi manual</p>
+                      </div>
+                      <Switch
+                        checked={merchantAutoApprove?.enabled ?? false}
+                        onCheckedChange={() => handleToggleRegistration('merchant_auto_approve', merchantAutoApprove?.enabled ?? false)}
+                        disabled={saving === 'merchant_auto_approve'}
                       />
                     </div>
                   </CardContent>

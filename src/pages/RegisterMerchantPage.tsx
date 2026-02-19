@@ -325,6 +325,17 @@ export default function RegisterMerchantPage() {
         return;
       }
 
+      // Check if merchant auto-approve is enabled
+      const { data: autoApproveSettings } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'merchant_auto_approve')
+        .single();
+      
+      const isAutoApproveEnabled = (autoApproveSettings?.value as any)?.enabled ?? false;
+      const registrationStatus = isAutoApproveEnabled ? 'APPROVED' : 'PENDING';
+      const merchantStatus = isAutoApproveEnabled ? 'ACTIVE' : 'PENDING';
+
       const { error } = await supabase.from('merchants').insert({
         name: data.name.trim(),
         user_id: user.id,
@@ -339,8 +350,8 @@ export default function RegisterMerchantPage() {
         business_description: data.businessDescription?.trim() || null,
         verifikator_code: referralCode ? referralCode.toUpperCase() : null,
         trade_group: referralInfo.tradeGroup || null,
-        registration_status: 'PENDING',
-        status: 'PENDING',
+        registration_status: registrationStatus,
+        status: merchantStatus,
         order_mode: 'ADMIN_ASSISTED',
         is_open: false,
         open_time: data.openTime,
